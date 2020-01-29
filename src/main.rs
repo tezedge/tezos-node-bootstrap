@@ -55,10 +55,10 @@ fn create_monitor_node_thread(node: NodeType) -> JoinHandle<()> {
                 // empty string means, the rpc server is running, but the bootstraping has not started yet
                 if s != "" {
                     let desired_timestamp =
-                        // level: 20l cycle:  9
+                        // level: 20k cycle:  9
                         // DateTime::parse_from_rfc3339("2019-10-08T10:17:46Z").unwrap();
                         // level: 40k cycle: 19
-                        DateTime::parse_from_rfc3339("2019-10-17T10:31:42Z").unwrap();
+                        DateTime::parse_from_rfc3339("2019-10-10T10:31:42Z").unwrap();
                     let block_timestamp = DateTime::parse_from_rfc3339(&s).unwrap();
 
                     if block_timestamp >= desired_timestamp {
