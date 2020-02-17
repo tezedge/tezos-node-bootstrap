@@ -14,6 +14,9 @@ use std::fmt;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use std::env;
+use std::process::Command;
+use failure::bail;
 
 impl fmt::Display for NodeType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -22,31 +25,44 @@ impl fmt::Display for NodeType {
 }
 
 fn main() {
-    // NOTE: move to fn if works
-    let measure_tezedge = thread::spawn(move || {
+    let args: Vec<String> = env::args().collect();
+
+    match args.len() {
+        1 => {
+            println!("No argument passed! Exiting");
+        },
+        2 => {
+            match &args[1][..] {
+                "-b" | "--bootstrap" => {
+                    start_bootstrap();
+                },
+                "-p" | "--performance-test"=> test_rpc_performance().unwrap(),
+                _ => println!("Nope"),
+            }
+        },
+        _ => println!("Invalid argument"),
+    }
+}
+
+fn start_bootstrap() {
+    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge).unwrap();
+    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml).unwrap();
+
+    measure_tezedge.join().unwrap();
+    measure_ocaml.join().unwrap();
+}
+
+fn spawn_monitor_thread(node_type: NodeType) -> Result<JoinHandle<()>, failure::Error> {
+    Ok(thread::spawn(move || {
         let now = Instant::now();
 
-        let bootstrapping_tezedge = create_monitor_node_thread(NodeType::Tezedge);
+        let bootstrapping_tezedge = create_monitor_node_thread(node_type);
         bootstrapping_tezedge.join().unwrap();
 
         let elapsed = now.elapsed();
         let sec = (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1000_000_000.0);
         println!("[tezedge] Duration in seconds: {}", sec);
-    });
-
-    let measure_ocaml = thread::spawn(move || {
-        let now = Instant::now();
-
-        let bootstrapping_ocaml = create_monitor_node_thread(NodeType::Ocaml);
-        bootstrapping_ocaml.join().unwrap();
-
-        let elapsed = now.elapsed();
-        let sec = (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1000_000_000.0);
-        println!("[ocaml] Duration in seconds: {}", sec);
-    });
-
-    measure_tezedge.join().unwrap();
-    measure_ocaml.join().unwrap();
+    }))
 }
 
 fn create_monitor_node_thread(node: NodeType) -> JoinHandle<()> {
@@ -115,4 +131,21 @@ fn is_bootstrapped(node: &NodeType) -> Result<String, reqwest::Error> {
     } else {
         Ok(String::new())
     }
+}
+
+fn test_rpc_performance() -> Result<(), failure::Error> {
+    println!("{:?}", env::current_dir());
+    let output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", "http://127.0.0.1:8732/chains/main/blocks/43897/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+
+    if !output.status.success() {
+        bail!("Command executed with failing error code");
+    }
+
+    let txt_out = String::from_utf8(output.stdout)?
+        .lines()
+        .last()
+        .unwrap().to_string();
+
+    println!("{}", txt_out);
+    Ok(())
 }
