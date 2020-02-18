@@ -9,6 +9,11 @@ pub enum NodeType {
     Ocaml,
 }
 
+pub enum Branch {
+    Master,
+    Modified,
+}
+
 use chrono::DateTime;
 use std::fmt;
 use std::thread;
@@ -133,19 +138,58 @@ fn is_bootstrapped(node: &NodeType) -> Result<String, reqwest::Error> {
     }
 }
 
-fn test_rpc_performance() -> Result<(), failure::Error> {
-    println!("{:?}", env::current_dir());
-    let output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", "http://127.0.0.1:8732/chains/main/blocks/43897/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+fn run_wrk(branch: Branch) -> Result<serde_json::Value, failure::Error> {
+    let output;
+    match branch {
+        Branch::Master => {
+            //output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", "http://tezedge-node-run:18732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+            output = Command::new("wrk").args(&["-t1", "-c1", "-d60s", "-R1", "http://127.0.0.1:8732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+        }
+        Branch::Modified => {
+            //output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", "http://tezedge-node-run-master:38732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+            output = Command::new("wrk").args(&["-t1", "-c1", "-d60s", "-R1", "http://127.0.0.1:8732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+        }
+    }
 
     if !output.status.success() {
         bail!("Command executed with failing error code");
     }
 
-    let txt_out = String::from_utf8(output.stdout)?
+    // get the last line of the output, which is a json object
+    let json_out = String::from_utf8(output.stdout)?
         .lines()
         .last()
         .unwrap().to_string();
 
-    println!("{}", txt_out);
+    // println!("{}", json_out);
+    let ret = serde_json::from_str(&json_out).expect("JSON wasn not well-formated");
+    Ok(ret)
+}
+
+fn test_rpc_performance() -> Result<(), failure::Error> {
+    let mut success: i32 = 0;
+
+    for _i in 0..10 {
+        let output_master = run_wrk(Branch::Master)?;
+        let output_modified = run_wrk(Branch::Modified)?;
+
+        let master_latency_mean = &output_master["latency"]["mean"].to_string().parse().unwrap();
+        let modified_latency_mean = &output_modified["latency"]["mean"].to_string().parse().unwrap();
+
+        println!("Master mean latency: {}", master_latency_mean);
+        println!("Modified mean latency: {}", modified_latency_mean);
+
+        let tolerance = master_latency_mean * 0.1;
+        println!("Tolerance (10%): {}", tolerance);
+
+        let delta = modified_latency_mean - master_latency_mean;
+        println!("Delta: {}", delta);
+
+        if delta < tolerance {
+            success += 1;
+        }
+    }
+    assert!(success >= 7);
+
     Ok(())
 }
