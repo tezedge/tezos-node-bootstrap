@@ -201,40 +201,46 @@ fn test_rpc_performance() -> Result<(), failure::Error> {
     Ok(())
 }
 
-fn test_indexer() -> Result<(), failure::Error> {    
-    let mut response_tezedge_indexed_result;
-    let response_tezedge_indexed;
-    loop {
-        response_tezedge_indexed_result = reqwest::blocking::get("http://tz-indexer:8002/explorer/block/1000");
-        //response_tezedge_indexed_result = reqwest::blocking::get("https://api.babylonnet.tzstats.com/explorer/block/1000")?;
+fn get_indexer_data(node_type: NodeType) -> Result<reqwest::blocking::Response, failure::Error> {
+    let mut response;
 
-        // check if the indexer returns the requested block, if not, it is still indexing
-        match response_tezedge_indexed_result {
+    loop {
+        match node_type {
+            NodeType::Ocaml => response = reqwest::blocking::get("http://tz-indexer-ocaml:8002/explorer/block/1000"),
+            NodeType::Tezedge => response = reqwest::blocking::get("http://tz-indexer-tezedge:8002/explorer/block/1000"),
+        }
+
+        match response {
             Ok(res) => {
                 if !res.status().is_success() {
-                    println!("Indexer still indexing. Sleeping for 10s");
+                    println!("[{}] Indexer still indexing. Sleeping for 10s", node_type.to_string());
                     thread::sleep(Duration::from_secs(10));
                     continue;
                 } else {
-                    response_tezedge_indexed = res;
-                    break;
+                    return Ok(res)
                 }
             },
-            Err(e) => {
-                println!("Service not started yet");
+            Err(_e) => {
+                println!("[{:?}] Service not started yet", node_type.to_string());
                 thread::sleep(Duration::from_secs(10));
                 continue;
             }
         }
     }
-    let response_reference = reqwest::blocking::get("https://api.babylonnet.tzstats.com/explorer/block/1000")?;
+}
 
-    let response_tezedge: serde_json::value::Value =
-        serde_json::from_str(&response_tezedge_indexed.text()?).expect("JSON was not well-formatted");
-
-    let response_tzstatcom: serde_json::value::Value =
-        serde_json::from_str(&response_reference.text()?).expect("JSON was not well-formatted");
+fn test_indexer() -> Result<(), failure::Error> {
     
-    assert_json_eq!(response_tezedge, response_tzstatcom);
+    let response_tezedge = get_indexer_data(NodeType::Tezedge)?;
+    let response_ocaml = get_indexer_data(NodeType::Ocaml)?;
+
+    let tezedge_json: serde_json::value::Value =
+        serde_json::from_str(&response_tezedge.text()?).expect("JSON was not well-formatted");
+
+    let ocaml_json: serde_json::value::Value =
+        serde_json::from_str(&response_ocaml.text()?).expect("JSON was not well-formatted");
+    
+    assert_json_eq!(tezedge_json, ocaml_json);
+    println!("Json responses are identical!");
     Ok(())
 }
