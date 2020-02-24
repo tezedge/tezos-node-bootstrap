@@ -3,4 +3,4 @@ COPY . .
 
 RUN cargo install --path .
 
-CMD ["tezos-node-bootstrap"]
+# CMD ["tezos-node-bootstrap"]

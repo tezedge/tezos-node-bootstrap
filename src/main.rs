@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 use std::env;
 use std::process::Command;
 use failure::bail;
+use assert_json_diff::assert_json_eq;
 
 impl fmt::Display for NodeType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -42,7 +43,8 @@ fn main() {
                     start_bootstrap();
                 },
                 "-p" | "--performance-test"=> test_rpc_performance().unwrap(),
-                _ => println!("Nope"),
+                "-i" | "--indexer-test" => test_indexer().unwrap(),
+                _ => println!("Argument not recognized"),
             }
         },
         _ => println!("Invalid argument"),
@@ -147,7 +149,7 @@ fn run_wrk(branch: Branch) -> Result<serde_json::Value, failure::Error> {
         }
         Branch::Modified => {
             //output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", "http://tezedge-node-run-master:38732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
-            output = Command::new("wrk").args(&["-t1", "-c1", "-d60s", "-R1", "http://127.0.0.1:8732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+            output = Command::new("wrk").args(&["-t1", "-c1", "-d60s", "-R1", "http://127.0.0.1:18732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
         }
     }
 
@@ -173,11 +175,11 @@ fn test_rpc_performance() -> Result<(), failure::Error> {
         let output_master = run_wrk(Branch::Master)?;
         let output_modified = run_wrk(Branch::Modified)?;
 
-        let master_latency_mean = &output_master["latency"]["mean"].to_string().parse().unwrap();
-        let modified_latency_mean = &output_modified["latency"]["mean"].to_string().parse().unwrap();
+        let master_latency_mean = &output_master["latency"]["max"].to_string().parse().unwrap();
+        let modified_latency_mean = &output_modified["latency"]["max"].to_string().parse().unwrap();
 
-        println!("Master mean latency: {}", master_latency_mean);
-        println!("Modified mean latency: {}", modified_latency_mean);
+        println!("Master max latency: {}", master_latency_mean);
+        println!("Modified max latency: {}", modified_latency_mean);
 
         let tolerance = master_latency_mean * 0.1;
         println!("Tolerance (10%): {}", tolerance);
@@ -187,9 +189,52 @@ fn test_rpc_performance() -> Result<(), failure::Error> {
 
         if delta < tolerance {
             success += 1;
+            println!("OK");
+        } else {
+            println!("FAIL");
         }
+        println!("");
     }
+    println!("Success: {}", success);
     assert!(success >= 7);
 
+    Ok(())
+}
+
+fn test_indexer() -> Result<(), failure::Error> {    
+    let mut response_tezedge_indexed_result;
+    let response_tezedge_indexed;
+    loop {
+        response_tezedge_indexed_result = reqwest::blocking::get("http://tz-indexer:8002/explorer/block/1000");
+        //response_tezedge_indexed_result = reqwest::blocking::get("https://api.babylonnet.tzstats.com/explorer/block/1000")?;
+
+        // check if the indexer returns the requested block, if not, it is still indexing
+        match response_tezedge_indexed_result {
+            Ok(res) => {
+                if !res.status().is_success() {
+                    println!("Indexer still indexing. Sleeping for 10s");
+                    thread::sleep(Duration::from_secs(10));
+                    continue;
+                } else {
+                    response_tezedge_indexed = res;
+                    break;
+                }
+            },
+            Err(e) => {
+                println!("Service not started yet");
+                thread::sleep(Duration::from_secs(10));
+                continue;
+            }
+        }
+    }
+    let response_reference = reqwest::blocking::get("https://api.babylonnet.tzstats.com/explorer/block/1000")?;
+
+    let response_tezedge: serde_json::value::Value =
+        serde_json::from_str(&response_tezedge_indexed.text()?).expect("JSON was not well-formatted");
+
+    let response_tzstatcom: serde_json::value::Value =
+        serde_json::from_str(&response_reference.text()?).expect("JSON was not well-formatted");
+    
+    assert_json_eq!(response_tezedge, response_tzstatcom);
     Ok(())
 }
