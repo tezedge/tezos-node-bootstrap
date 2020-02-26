@@ -79,7 +79,7 @@ fn create_monitor_node_thread(node: NodeType) -> JoinHandle<()> {
                 // empty string means, the rpc server is running, but the bootstraping has not started yet
                 if s != "" {
                     let desired_timestamp =
-                        DateTime::parse_from_rfc3339("2019-09-28T08:14:24Z").unwrap();
+                        DateTime::parse_from_rfc3339("2019-10-12T22:23:06Z").unwrap();
                     let block_timestamp = DateTime::parse_from_rfc3339(&s).unwrap();
 
                     if block_timestamp >= desired_timestamp {
@@ -206,8 +206,8 @@ fn get_indexer_data(node_type: NodeType) -> Result<reqwest::blocking::Response, 
 
     loop {
         match node_type {
-            NodeType::Ocaml => response = reqwest::blocking::get("http://tz-indexer-ocaml:8002/explorer/block/1000"),
-            NodeType::Tezedge => response = reqwest::blocking::get("http://tz-indexer-tezedge:8002/explorer/block/1000"),
+            NodeType::Ocaml => response = reqwest::blocking::get("http://tz-indexer-ocaml:8002/explorer/block/10000"),
+            NodeType::Tezedge => response = reqwest::blocking::get("http://tz-indexer-tezedge:8002/explorer/block/10000"),
         }
 
         match response {
@@ -231,16 +231,26 @@ fn get_indexer_data(node_type: NodeType) -> Result<reqwest::blocking::Response, 
 
 fn test_indexer() -> Result<(), failure::Error> {
     
-    let response_tezedge = get_indexer_data(NodeType::Tezedge)?;
-    let response_ocaml = get_indexer_data(NodeType::Ocaml)?;
+    let mut response_tezedge;
+    let mut response_ocaml;
 
-    let tezedge_json: serde_json::value::Value =
-        serde_json::from_str(&response_tezedge.text()?).expect("JSON was not well-formatted");
+    // wait for the indexer to be fully indexed to the chosen point
+    get_indexer_data(NodeType::Ocaml)?;
+    get_indexer_data(NodeType::Tezedge)?;
 
-    let ocaml_json: serde_json::value::Value =
-        serde_json::from_str(&response_ocaml.text()?).expect("JSON was not well-formatted");
-    
-    assert_json_eq!(tezedge_json, ocaml_json);
+    for n in 0..30000 {
+        println!("Checking and comparing indexed block {}", n);
+        response_ocaml = reqwest::blocking::get(&format!("http://tz-indexer-ocaml:8002/explorer/block/{}", n))?;
+        response_tezedge = reqwest::blocking::get(&format!("http://tz-indexer-tezedge:8002/explorer/block/{}", n))?;
+
+        let tezedge_json: serde_json::value::Value =
+            serde_json::from_str(&response_tezedge.text()?).expect("JSON was not well-formatted");
+
+        let ocaml_json: serde_json::value::Value =
+            serde_json::from_str(&response_ocaml.text()?).expect("JSON was not well-formatted");
+        
+        assert_json_eq!(tezedge_json, ocaml_json);
+    }
     println!("Json responses are identical!");
     Ok(())
 }
