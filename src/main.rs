@@ -1,5 +1,4 @@
 // PoC, needs refactoring
-
 extern crate reqwest;
 extern crate serde;
 
