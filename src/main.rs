@@ -5,6 +5,7 @@ extern crate serde;
 #[derive(Debug)]
 pub enum NodeType {
     Tezedge,
+    TezedgeMaster,
     Ocaml,
 }
 
@@ -53,9 +54,11 @@ fn main() {
 fn start_bootstrap() {
     let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge).unwrap();
     let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml).unwrap();
+    let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster).unwrap();
 
     measure_tezedge.join().unwrap();
     measure_ocaml.join().unwrap();
+    measure_tezedge_master.join().unwrap();
 }
 
 fn spawn_monitor_thread(node_type: NodeType) -> Result<JoinHandle<()>, failure::Error> {
@@ -125,6 +128,10 @@ fn is_bootstrapped(node: &NodeType) -> Result<String, reqwest::Error> {
             response =
                 reqwest::blocking::get("http://ocaml-node-run:8732/chains/main/blocks/head")?;
         }
+        NodeType::TezedgeMaster => {
+            response = 
+                reqwest::blocking::get("http:/tezedge-master-node-run:28732/chains/main/blocks/head")?;
+        }
     }
     // if there is no response, the node has not started bootstrapping
     if response.status().is_success() {
@@ -139,16 +146,24 @@ fn is_bootstrapped(node: &NodeType) -> Result<String, reqwest::Error> {
     }
 }
 
-fn run_wrk(branch: Branch) -> Result<serde_json::Value, failure::Error> {
+fn run_wrk(branch: Branch, rpc: &str) -> Result<serde_json::Value, failure::Error> {
     let output;
     match branch {
         Branch::Master => {
-            //output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", "http://tezedge-node-run:18732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
-            output = Command::new("wrk").args(&["-t1", "-c1", "-d60s", "-R1", "http://127.0.0.1:8732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+            output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", &format!("{}/{}", "http://tezedge-node-run:18732", rpc), "-s", "/scripts/as_json.lua", "--", "out.json"])
+            .current_dir("/")
+            .output()?;
+            // output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", &format!("{}/{}", "http://116.202.128.230:8732", rpc), "-s", "scripts/as_json.lua", "--", "out.json"])
+            // .current_dir("/")
+            // .output()?;
         }
         Branch::Modified => {
-            //output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", "http://tezedge-node-run-master:38732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
-            output = Command::new("wrk").args(&["-t1", "-c1", "-d60s", "-R1", "http://127.0.0.1:18732/chains/main/blocks/100/helpers/baking_rights", "-s", "scripts/as_json.lua", "--", "out.json"]).output()?;
+            output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", &format!("{}/{}", "http://tezedge-master-node-run:28732", rpc), "-s", "/scripts/as_json.lua", "--", "out.json"])
+            .current_dir("/")
+            .output()?;
+            // output = Command::new("wrk").args(&["-t1", "-c1", "-d30s", "-R1", &format!("{}/{}", "http://116.202.128.230:8732", rpc), "-s", "scripts/as_json.lua", "--", "out.json"])
+            // .current_dir("/")
+            // .output()?;
         }
     }
 
@@ -163,39 +178,49 @@ fn run_wrk(branch: Branch) -> Result<serde_json::Value, failure::Error> {
         .unwrap().to_string();
 
     // println!("{}", json_out);
-    let ret = serde_json::from_str(&json_out).expect("JSON wasn not well-formated");
+    let ret = serde_json::from_str(&json_out).expect("JSON was not well-formated");
     Ok(ret)
 }
 
 fn test_rpc_performance() -> Result<(), failure::Error> {
-    let mut success: i32 = 0;
+    let rpcs = vec![
+        "chains/main/blocks/100/helpers/baking_rights",
+        "chains/main/blocks/100/helpers/endorsing_rights",
+        "chains/main/blocks/100/context/constants",
+        "chains/main/blocks/100/votes/listings",
+        "chains/main/blocks/100",
+        "chains/main/blocks/100/header",
+        "chains/main/blocks/100/context/raw/bytes/cycle"
+    ];
 
-    for _i in 0..10 {
-        let output_master = run_wrk(Branch::Master)?;
-        let output_modified = run_wrk(Branch::Modified)?;
+    let path = env::current_dir()?;
+    println!("The current directory is {}", path.display());
 
-        let master_latency_mean = &output_master["latency"]["max"].to_string().parse().unwrap();
-        let modified_latency_mean = &output_modified["latency"]["max"].to_string().parse().unwrap();
+    for rpc in rpcs.into_iter() {
+        println!("Running wrk for rpc: {}", rpc);
+        let output_master = run_wrk(Branch::Master, &rpc)?;
+        let output_modified = run_wrk(Branch::Modified, &rpc)?;
 
-        println!("Master max latency: {}", master_latency_mean);
-        println!("Modified max latency: {}", modified_latency_mean);
+        let master_latency_max = &output_master["latency"]["max"].to_string().parse().unwrap();
+        let modified_latency_max = &output_modified["latency"]["max"].to_string().parse().unwrap();
 
-        let tolerance = master_latency_mean * 0.1;
+        println!("Master max latency: {}", master_latency_max);
+        println!("Modified max latency: {}", modified_latency_max);
+
+        let tolerance = master_latency_max * 0.1;
         println!("Tolerance (10%): {}", tolerance);
 
-        let delta = modified_latency_mean - master_latency_mean;
+        let delta = modified_latency_max - master_latency_max;
         println!("Delta: {}", delta);
 
+        // TODO: fail the test if the d
         if delta < tolerance {
-            success += 1;
             println!("OK");
         } else {
             println!("FAIL");
         }
         println!("");
     }
-    println!("Success: {}", success);
-    assert!(success >= 7);
 
     Ok(())
 }
@@ -207,6 +232,8 @@ fn get_indexer_data(node_type: NodeType) -> Result<reqwest::blocking::Response, 
         match node_type {
             NodeType::Ocaml => response = reqwest::blocking::get("http://tz-indexer-ocaml:8002/explorer/block/10000"),
             NodeType::Tezedge => response = reqwest::blocking::get("http://tz-indexer-tezedge:8002/explorer/block/10000"),
+            // we never make a request to an indexer with the TezedgeMaster node
+            NodeType::TezedgeMaster =>  response = reqwest::blocking::get("http://tz-indexer-tezedge:8002/explorer/block/1"),
         }
 
         match response {
