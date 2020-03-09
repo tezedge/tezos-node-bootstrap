@@ -9,7 +9,7 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
     let output;
 
     let master_url = format!("{}/{}", "http://tezedge-node-run:18732", rpc);
-    let modified_url = format!("{}/{}", "http://tezedge-master-node-run:18732", rpc);
+    let modified_url = format!("{}/{}", "http://tezedge-master-node-run:28732", rpc);
 
     // local testing
     // let master_url = format!("{}/{}", "http://116.202.128.230:18732", rpc);
