@@ -8,18 +8,20 @@ use crate::types::{Branch, WrkResult};
 fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
     let output;
 
-    let master_url = format!("{}/{}", "http://tezedge-node-run:18732", rpc);
-    let modified_url = format!("{}/{}", "http://tezedge-master-node-run:28732", rpc);
+    let modified_url = format!("{}/{}", "http://tezedge-node-run:18732", rpc);
+    let master_url = format!("{}/{}", "http://tezedge-master-node-run:28732", rpc);
 
     // local testing
-    // let master_url = format!("{}/{}", "http://116.202.128.230:18732", rpc);
+    // let master_url = format!("{}/{}", "http://116.202.128.230:8732", rpc);
     // let modified_url = format!("{}/{}", "http://116.202.128.230:18732", rpc);
 
     let mut wrk_args = vec![
         "-t1", 
         "-c1",
         "-d30s",
-        "-R1000",
+        //"-R1000",
+        "--timeout",
+        "30s",
         "-s",
         "/scripts/as_json.lua",
         "--",
@@ -30,7 +32,7 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
             // output = Command::new("wrk").args(&)
             // .current_dir("/")
             // .output()?;
-            wrk_args.insert(4, &master_url);
+            wrk_args.insert(5, &master_url);
 
             output = Command::new("wrk").args(&wrk_args)
             .current_dir("/")
@@ -40,7 +42,7 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
             // output = Command::new("wrk").args(&)
             // .current_dir("/")
             // .output()?;
-            wrk_args.insert(4, &modified_url);
+            wrk_args.insert(5, &modified_url);
 
             output = Command::new("wrk").args(&wrk_args)
             .current_dir("/")
@@ -66,8 +68,8 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
 
 pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
     let rpcs = vec![
-        "chains/main/blocks/100/helpers/baking_rights",
-        "chains/main/blocks/100/helpers/endorsing_rights",
+        "chains/main/blocks/100/helpers/baking_rights?all&cycle=1",
+        "chains/main/blocks/100/helpers/endorsing_rights?all&cycle=1",
         "chains/main/blocks/100/context/constants",
         // "chains/main/blocks/100/votes/listings",
         "chains/main/blocks/100",
@@ -90,14 +92,14 @@ pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
         println!("Master throughput: {}req/s", master_throughput); 
         println!("Modified throughput: {}req/s", modified_throughput); 
 
-        println!("Master max latency: {}us", output_master.latency_max());
-        println!("Modified max latency: {}us", output_modified.latency_max());
+        println!("Master max latency: {}ms", output_master.latency_max() * 0.001);
+        println!("Modified max latency: {}ms", output_modified.latency_max() * 0.001);
 
         let tolerance = output_master.latency_max() * 0.1;
-        println!("Tolerance (10%): {}us", tolerance);
+        println!("Tolerance (10%): {}ms", tolerance * 0.001);
 
         let delta = output_modified.latency_max() - output_master.latency_max();
-        println!("Delta: {}us", delta);
+        println!("Delta: {}ms", delta * 0.001);
 
         // TODO: fail the test if the d
         if delta < tolerance {
