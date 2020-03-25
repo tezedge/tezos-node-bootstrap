@@ -15,14 +15,19 @@ fn main() {
         },
         2 => {
             match &args[1][..] {
-                "-b" | "--bootstrap" => {
-                    bootstrap::start_bootstrap();
-                },
                 "-p" | "--performance-test"=> wrk_test::test_rpc_performance().unwrap(),
                 "-i" | "--indexer-test" => indexer_test::test_indexer().unwrap(),
                 _ => println!("Argument not recognized"),
             }
         },
+        3 => {
+            match &args[1][..] {
+                "-b" | "--bootstrap" => {
+                    bootstrap::start_bootstrap(args[2].to_string());
+                },
+                _ => println!("Argument not recognized"),
+            }
+        }
         _ => println!("Invalid argument"),
     }
 }

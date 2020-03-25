@@ -6,37 +6,37 @@ use reqwest;
 
 use crate::types::{NodeType};
 
-pub(crate) fn start_bootstrap() {
-    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge).unwrap();
-    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml).unwrap();
-    let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster).unwrap();
+pub(crate) fn start_bootstrap(bootstrap_timestamp: String) {
+    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge, bootstrap_timestamp.clone()).unwrap();
+    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml, bootstrap_timestamp.clone()).unwrap();
+    // let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster, bootstrap_timestamp).unwrap();
 
     measure_tezedge.join().unwrap();
     measure_ocaml.join().unwrap();
-    measure_tezedge_master.join().unwrap();
+    // measure_tezedge_master.join().unwrap();
 }
 
-fn spawn_monitor_thread(node_type: NodeType) -> Result<JoinHandle<()>, failure::Error> {
+fn spawn_monitor_thread(node_type: NodeType, bootstrap_timestamp: String) -> Result<JoinHandle<()>, failure::Error> {
     Ok(thread::spawn(move || {
         let now = Instant::now();
 
-        let bootstrapping_tezedge = create_monitor_node_thread(node_type);
+        let bootstrapping_tezedge = create_monitor_node_thread(node_type.clone(), bootstrap_timestamp);
         bootstrapping_tezedge.join().unwrap();
 
         let elapsed = now.elapsed();
         let sec = (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1000_000_000.0);
-        println!("[tezedge] Duration in seconds: {}", sec);
+        println!("[{}] Duration in seconds: {}", node_type, sec);
     }))
 }
 
-fn create_monitor_node_thread(node: NodeType) -> JoinHandle<()> {
+fn create_monitor_node_thread(node: NodeType, bootstrap_timestamp: String) -> JoinHandle<()> {
     let bootstrap_monitoring_thread = thread::spawn(move || loop {
         match is_bootstrapped(&node) {
             Ok(s) => {
                 // empty string means, the rpc server is running, but the bootstraping has not started yet
                 if s != "" {
                     let desired_timestamp =
-                        DateTime::parse_from_rfc3339("2019-10-12T22:23:06Z").unwrap();
+                        DateTime::parse_from_rfc3339(&bootstrap_timestamp).unwrap();
                     let block_timestamp = DateTime::parse_from_rfc3339(&s).unwrap();
 
                     if block_timestamp >= desired_timestamp {

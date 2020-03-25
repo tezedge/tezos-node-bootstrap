@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::fmt;
 use getset::Getters;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NodeType {
     Tezedge,
     TezedgeMaster,
