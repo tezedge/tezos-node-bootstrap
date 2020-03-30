@@ -1,26 +1,25 @@
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-use chrono::DateTime;
 use reqwest;
 
 use crate::types::{NodeType};
 
-pub(crate) fn start_bootstrap(bootstrap_timestamp: String) {
-    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge, bootstrap_timestamp.clone()).unwrap();
-    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml, bootstrap_timestamp.clone()).unwrap();
-    // let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster, bootstrap_timestamp).unwrap();
+pub(crate) fn start_bootstrap(bootstrap_level: i32) {
+    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge, bootstrap_level.clone()).unwrap();
+    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml, bootstrap_level.clone()).unwrap();
+    // let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster, bootstrap_level).unwrap();
 
     measure_tezedge.join().unwrap();
     measure_ocaml.join().unwrap();
     // measure_tezedge_master.join().unwrap();
 }
 
-fn spawn_monitor_thread(node_type: NodeType, bootstrap_timestamp: String) -> Result<JoinHandle<()>, failure::Error> {
+fn spawn_monitor_thread(node_type: NodeType, bootstrap_level: i32) -> Result<JoinHandle<()>, failure::Error> {
     Ok(thread::spawn(move || {
         let now = Instant::now();
 
-        let bootstrapping_tezedge = create_monitor_node_thread(node_type.clone(), bootstrap_timestamp);
+        let bootstrapping_tezedge = create_monitor_node_thread(node_type.clone(), bootstrap_level);
         bootstrapping_tezedge.join().unwrap();
 
         let elapsed = now.elapsed();
@@ -29,22 +28,21 @@ fn spawn_monitor_thread(node_type: NodeType, bootstrap_timestamp: String) -> Res
     }))
 }
 
-fn create_monitor_node_thread(node: NodeType, bootstrap_timestamp: String) -> JoinHandle<()> {
+fn create_monitor_node_thread(node: NodeType, bootstrap_level: i32) -> JoinHandle<()> {
     let bootstrap_monitoring_thread = thread::spawn(move || loop {
         match is_bootstrapped(&node) {
             Ok(s) => {
                 // empty string means, the rpc server is running, but the bootstraping has not started yet
                 if s != "" {
-                    let desired_timestamp =
-                        DateTime::parse_from_rfc3339(&bootstrap_timestamp).unwrap();
-                    let block_timestamp = DateTime::parse_from_rfc3339(&s).unwrap();
+                    // let block_timestamp = DateTime::parse_from_rfc3339(&s).unwrap();
+                    let block_level: i32 = s.parse().unwrap();
 
-                    if block_timestamp >= desired_timestamp {
+                    if block_level >= bootstrap_level {
                         println!("[{}] Done Bootstrapping", node.to_string());
                         break;
                     } else {
                         println!(
-                            "[{}] Bootstrapping . . . timestamp: {}",
+                            "[{}] Bootstrapping . . . level: {}",
                             node.to_string(),
                             s
                         );
@@ -93,7 +91,7 @@ fn is_bootstrapped(node: &NodeType) -> Result<String, reqwest::Error> {
         let response_node: serde_json::value::Value =
             serde_json::from_str(&response.text()?).expect("JSON was not well-formatted");
 
-        Ok(response_node["header"]["timestamp"]
+        Ok(response_node["header"]["level"]
             .to_string()
             .replace("\"", ""))
     } else {

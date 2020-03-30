@@ -23,7 +23,7 @@ fn main() {
         3 => {
             match &args[1][..] {
                 "-b" | "--bootstrap" => {
-                    bootstrap::start_bootstrap(args[2].to_string());
+                    bootstrap::start_bootstrap(args[2].parse().unwrap());
                 },
                 _ => println!("Argument not recognized"),
             }
