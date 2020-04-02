@@ -2,9 +2,8 @@ use failure::bail;
 use std::env;
 use std::process::Command;
 use std::collections::HashMap;
-use itertools::Itertools;
 
-use crate::types::{Branch, WrkResult, NodeType};
+use crate::types::{Branch, WrkResult};
 
 type WrkResultMap = HashMap<Branch, WrkResult>;
 
@@ -37,9 +36,6 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
 
     match branch {
         Branch::Master => {
-            // output = Command::new("wrk").args(&)
-            // .current_dir("/")
-            // .output()?;
             wrk_args.insert(5, &master_url);
 
             output = Command::new("wrk").args(&wrk_args)
@@ -47,9 +43,6 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
             .output()?;
         }
         Branch::Modified => {
-            // output = Command::new("wrk").args(&)
-            // .current_dir("/")
-            // .output()?;
             wrk_args.insert(5, &modified_url);
 
             output = Command::new("wrk").args(&wrk_args)
@@ -89,7 +82,8 @@ pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
         "chains/main/blocks/100/votes/listings",
         "chains/main/blocks/100",
         "chains/main/blocks/100/header",
-        "chains/main/blocks/100/context/raw/bytes/cycle"
+        "chains/main/blocks/100/context/raw/bytes/cycle",
+        //"chains/main/blocks/100/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17",
     ];
 
     let path = env::current_dir()?;

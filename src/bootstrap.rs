@@ -4,15 +4,18 @@ use std::time::{Duration, Instant};
 use reqwest;
 
 use crate::types::{NodeType};
+use crate::environment::{to_block_header, ocaml_node_rpc_context_root, tezedge_node_rpc_context_root, tezedge_node_master_rpc_context_root};
 
-pub(crate) fn start_bootstrap(bootstrap_level: i32) {
-    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge, bootstrap_level.clone()).unwrap();
-    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml, bootstrap_level.clone()).unwrap();
-    // let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster, bootstrap_level).unwrap();
+pub(crate) fn start_bootstrap() {
+    let bootstrap_level = to_block_header();
+
+    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge, bootstrap_level).unwrap();
+    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml, bootstrap_level).unwrap();
+    let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster, bootstrap_level).unwrap();
 
     measure_tezedge.join().unwrap();
     measure_ocaml.join().unwrap();
-    // measure_tezedge_master.join().unwrap();
+    measure_tezedge_master.join().unwrap();
 }
 
 fn spawn_monitor_thread(node_type: NodeType, bootstrap_level: i32) -> Result<JoinHandle<()>, failure::Error> {
@@ -71,19 +74,23 @@ fn create_monitor_node_thread(node: NodeType, bootstrap_level: i32) -> JoinHandl
 
 #[allow(dead_code)]
 fn is_bootstrapped(node: &NodeType) -> Result<String, reqwest::Error> {
+    let tezedge_node_master_rpc_context_root = tezedge_node_master_rpc_context_root();
+    let tezedge_node_rpc_context_root = tezedge_node_rpc_context_root();
+    let ocaml_node_rpc_context_root = ocaml_node_rpc_context_root();
+
     let response;
     match node {
         NodeType::Tezedge => {
             response =
-                reqwest::blocking::get("http://tezedge-node-run:18732/chains/main/blocks/head")?;
+                reqwest::blocking::get(&format!("{}/chains/main/blocks/head", tezedge_node_rpc_context_root))?;
         }
         NodeType::Ocaml => {
             response =
-                reqwest::blocking::get("http://ocaml-node-run:8732/chains/main/blocks/head")?;
+                reqwest::blocking::get(&format!("{}/chains/main/blocks/head", ocaml_node_rpc_context_root))?;
         }
         NodeType::TezedgeMaster => {
             response = 
-                reqwest::blocking::get("http:/tezedge-master-node-run:28732/chains/main/blocks/head")?;
+                reqwest::blocking::get(&format!("{}/chains/main/blocks/head", tezedge_node_master_rpc_context_root))?;
         }
     }
     // if there is no response, the node has not started bootstrapping
