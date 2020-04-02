@@ -43,7 +43,7 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
             wrk_args.insert(5, &master_url);
 
             output = Command::new("wrk").args(&wrk_args)
-            //.current_dir("/")
+            .current_dir("/")
             .output()?;
         }
         Branch::Modified => {
@@ -53,14 +53,14 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
             wrk_args.insert(5, &modified_url);
 
             output = Command::new("wrk").args(&wrk_args)
-            //.current_dir("/")
+            .current_dir("/")
             .output()?;
         }
         Branch::Ocaml => {
             wrk_args.insert(5, &ocaml_url);
 
             output = Command::new("wrk").args(&wrk_args)
-            //.current_dir("/")
+            .current_dir("/")
             .output()?;
         }
     }
