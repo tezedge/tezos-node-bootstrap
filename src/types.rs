@@ -15,12 +15,20 @@ impl fmt::Display for NodeType {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Branch {
     Master,
     Modified,
+    Ocaml,
 }
 
-#[derive(Deserialize, Debug, Getters)]
+impl fmt::Display for Branch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Deserialize, Debug, Getters, Clone)]
 pub struct WrkResult {
     #[get = "pub(crate)"]
     duration: f32,

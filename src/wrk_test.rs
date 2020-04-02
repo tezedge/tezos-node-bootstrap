@@ -1,19 +1,25 @@
 use failure::bail;
 use std::env;
 use std::process::Command;
+use std::collections::HashMap;
+use itertools::Itertools;
 
-use crate::types::{Branch, WrkResult};
+use crate::types::{Branch, WrkResult, NodeType};
 
+type WrkResultMap = HashMap<Branch, WrkResult>;
 
 fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
     let output;
 
     let modified_url = format!("{}/{}", "http://tezedge-node-run:18732", rpc);
     let master_url = format!("{}/{}", "http://tezedge-master-node-run:28732", rpc);
+    let ocaml_url = format!("{}/{}", "http://ocaml-node-run:8732", rpc);
+
 
     // local testing
-    // let master_url = format!("{}/{}", "http://116.202.128.230:8732", rpc);
+    // let master_url = format!("{}/{}", "http://116.202.128.230:28732", rpc);
     // let modified_url = format!("{}/{}", "http://116.202.128.230:18732", rpc);
+    // let ocaml_url = format!("{}/{}", "http://116.202.128.230:10000", rpc);
 
     let mut wrk_args = vec![
         "-t1", 
@@ -27,6 +33,8 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
         "--",
         "out.json"
     ];
+    println!("Running wrk for {:?} with arguments: {:?}", branch, &wrk_args);
+
     match branch {
         Branch::Master => {
             // output = Command::new("wrk").args(&)
@@ -35,7 +43,7 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
             wrk_args.insert(5, &master_url);
 
             output = Command::new("wrk").args(&wrk_args)
-            .current_dir("/")
+            //.current_dir("/")
             .output()?;
         }
         Branch::Modified => {
@@ -45,12 +53,19 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
             wrk_args.insert(5, &modified_url);
 
             output = Command::new("wrk").args(&wrk_args)
-            .current_dir("/")
+            //.current_dir("/")
+            .output()?;
+        }
+        Branch::Ocaml => {
+            wrk_args.insert(5, &ocaml_url);
+
+            output = Command::new("wrk").args(&wrk_args)
+            //.current_dir("/")
             .output()?;
         }
     }
 
-    println!("Running wrk with arguments: {:?}", &wrk_args);
+    
     if !output.status.success() {
         println!("{:?}", output);
         bail!("Command executed with failing error code");
@@ -71,7 +86,7 @@ pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
         "chains/main/blocks/100/helpers/baking_rights?all&cycle=1",
         "chains/main/blocks/100/helpers/endorsing_rights?all&cycle=1",
         "chains/main/blocks/100/context/constants",
-        // "chains/main/blocks/100/votes/listings",
+        "chains/main/blocks/100/votes/listings",
         "chains/main/blocks/100",
         "chains/main/blocks/100/header",
         "chains/main/blocks/100/context/raw/bytes/cycle"
@@ -82,34 +97,50 @@ pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
 
     for rpc in rpcs.into_iter() {
         println!("Running wrk for rpc: {}", rpc);
-        let output_master = run_wrk(Branch::Master, &rpc)?;
-        let output_modified = run_wrk(Branch::Modified, &rpc)?;
+        let mut outputs: WrkResultMap = HashMap::new();
 
-        // calculate req/s with total number of requests(N) and the duration of the test (us) 
-        let master_throughput = output_master.requests() / (output_master.duration() * 0.000001);
-        let modified_throughput = output_modified.requests() / (output_modified.duration() * 0.000001);
+        outputs.insert(Branch::Master, run_wrk(Branch::Master, &rpc)?);
+        outputs.insert(Branch::Modified, run_wrk(Branch::Modified, &rpc)?);
+        outputs.insert(Branch::Ocaml, run_wrk(Branch::Ocaml, &rpc)?);
 
-        println!("Master throughput: {}req/s", master_throughput); 
-        println!("Modified throughput: {}req/s", modified_throughput); 
-
-        println!("Master max latency: {}ms", output_master.latency_max() * 0.001);
-        println!("Modified max latency: {}ms", output_modified.latency_max() * 0.001);
-
-        let tolerance = output_master.latency_max() * 0.1;
-        println!("Tolerance (10%): {}ms", tolerance * 0.001);
-
-        let delta = output_modified.latency_max() - output_master.latency_max();
-        println!("Delta: {}ms", delta * 0.001);
-
-        // TODO: fail the test if the d
-        if delta < tolerance {
-            println!("OK");
-        } else {
-            println!("FAIL");
-        }
-        println!("------------------------------------------------------");
-        println!("");
+        calculate_and_display_statistics(&outputs)?;
     }
+
+    Ok(())
+}
+
+fn calculate_and_display_statistics(wrk_results: &WrkResultMap) -> Result<(), failure::Error>{
+
+    for (res_key, res_val) in wrk_results {
+         println!("{:?} thoughtput: {}req/s", res_key, calc_throughput(res_val.requests(), res_val.duration())?);
+         println!("{:?} max latency: {}ms", res_key, calc_max_latency(res_val.latency_max())?);
+         println!("");
+    }
+    calc_deltas(wrk_results)?;
+    println!("------------------------------------------------------");
+    println!("");
+    Ok(())
+}
+
+fn calc_throughput(req: &f32, dur: &f32) -> Result<f32, failure::Error> {
+    Ok(req / (dur * 0.000001))
+}
+
+fn calc_max_latency(lat: &f32) -> Result<f32, failure::Error> {
+    Ok(lat * 0.001)
+}
+
+fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
+    let ocaml_max_latency = wrk_results.get(&Branch::Ocaml).unwrap().latency_max();
+    let master_max_latency = wrk_results.get(&Branch::Master).unwrap().latency_max();
+    let modified_max_latency = wrk_results.get(&Branch::Modified).unwrap().latency_max();
+
+    let delta_master = (master_max_latency - ocaml_max_latency) * 0.001;
+    let delta_modified = (modified_max_latency - ocaml_max_latency) * 0.001;
+
+    println!("Deltas compared to ocaml node: ");
+    println!("\t Master: {}ms", delta_master);
+    println!("\t Modified: {}ms", delta_modified);
 
     Ok(())
 }
