@@ -4,15 +4,16 @@ use std::process::Command;
 use std::collections::HashMap;
 
 use crate::types::{Branch, WrkResult};
+use crate::environment::{ocaml_node_rpc_context_root, tezedge_node_master_rpc_context_root, tezedge_node_rpc_context_root};
 
 type WrkResultMap = HashMap<Branch, WrkResult>;
 
 fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
     let output;
 
-    let modified_url = format!("{}/{}", "http://tezedge-node-run:18732", rpc);
-    let master_url = format!("{}/{}", "http://tezedge-master-node-run:28732", rpc);
-    let ocaml_url = format!("{}/{}", "http://ocaml-node-run:8732", rpc);
+    let modified_url = format!("{}/{}", tezedge_node_rpc_context_root(), rpc);
+    let master_url = format!("{}/{}", tezedge_node_master_rpc_context_root(), rpc);
+    let ocaml_url = format!("{}/{}", ocaml_node_rpc_context_root(), rpc);
 
 
     // local testing
@@ -83,6 +84,7 @@ pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
         "chains/main/blocks/100",
         "chains/main/blocks/100/header",
         "chains/main/blocks/100/context/raw/bytes/cycle",
+        "/chains/main/blocks/100/context/raw/json/cycle/0"
         //"chains/main/blocks/100/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17",
     ];
 
