@@ -1,21 +1,22 @@
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
 use reqwest;
 
-use crate::types::{NodeType};
-use crate::environment::{to_block_header, ocaml_node_rpc_context_root, tezedge_node_rpc_context_root, tezedge_node_master_rpc_context_root};
+use crate::types::NodeType;
 
-pub(crate) fn start_bootstrap() {
-    let bootstrap_level = to_block_header();
+pub(crate) fn start_bootstrap(bootstrap_level: i32, nodes: Vec<NodeType>) {
+    let mut joins = Vec::new();
+    for node in nodes {
+        joins.push(
+            spawn_monitor_thread(node, bootstrap_level).unwrap()
+        )
+    }
 
-    let measure_tezedge = spawn_monitor_thread(NodeType::Tezedge, bootstrap_level).unwrap();
-    let measure_ocaml = spawn_monitor_thread(NodeType::Ocaml, bootstrap_level).unwrap();
-    let measure_tezedge_master = spawn_monitor_thread(NodeType::TezedgeMaster, bootstrap_level).unwrap();
-
-    measure_tezedge.join().unwrap();
-    measure_ocaml.join().unwrap();
-    measure_tezedge_master.join().unwrap();
+    for join in joins {
+        join.join().unwrap();
+    }
 }
 
 fn spawn_monitor_thread(node_type: NodeType, bootstrap_level: i32) -> Result<JoinHandle<()>, failure::Error> {
@@ -27,7 +28,7 @@ fn spawn_monitor_thread(node_type: NodeType, bootstrap_level: i32) -> Result<Joi
 
         let elapsed = now.elapsed();
         let sec = (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1000_000_000.0);
-        println!("[{}] Duration in seconds: {}", node_type, sec);
+        println!("[{}] Duration in seconds: {}", node_type.name, sec);
     }))
 }
 
@@ -41,12 +42,12 @@ fn create_monitor_node_thread(node: NodeType, bootstrap_level: i32) -> JoinHandl
                     let block_level: i32 = s.parse().unwrap();
 
                     if block_level >= bootstrap_level {
-                        println!("[{}] Done Bootstrapping", node.to_string());
+                        println!("[{}] Done Bootstrapping", node.name);
                         break;
                     } else {
                         println!(
                             "[{}] Bootstrapping . . . level: {}",
-                            node.to_string(),
+                            node.name,
                             s
                         );
                         thread::sleep(Duration::from_secs(10));
@@ -62,8 +63,8 @@ fn create_monitor_node_thread(node: NodeType, bootstrap_level: i32) -> JoinHandl
             Err(_e) => {
                 // panic!("Error in bootstrap check: {}", e);
                 // NOTE: This should be handled more carefully
-                println!("[{}] Waiting for node to run", node.to_string());
-                println!("[{}] Error: {}", node.to_string(), _e);
+                println!("[{}] Waiting for node to run", node.name);
+                println!("[{}] Error: {}", node.name, _e);
 
                 thread::sleep(Duration::from_secs(10));
             }
@@ -74,25 +75,8 @@ fn create_monitor_node_thread(node: NodeType, bootstrap_level: i32) -> JoinHandl
 
 #[allow(dead_code)]
 fn is_bootstrapped(node: &NodeType) -> Result<String, reqwest::Error> {
-    let tezedge_node_master_rpc_context_root = tezedge_node_master_rpc_context_root();
-    let tezedge_node_rpc_context_root = tezedge_node_rpc_context_root();
-    let ocaml_node_rpc_context_root = ocaml_node_rpc_context_root();
+    let response = reqwest::blocking::get(&format!("{}/chains/main/blocks/head", node.url))?;
 
-    let response;
-    match node {
-        NodeType::Tezedge => {
-            response =
-                reqwest::blocking::get(&format!("{}/chains/main/blocks/head", tezedge_node_rpc_context_root))?;
-        }
-        NodeType::Ocaml => {
-            response =
-                reqwest::blocking::get(&format!("{}/chains/main/blocks/head", ocaml_node_rpc_context_root))?;
-        }
-        NodeType::TezedgeMaster => {
-            response = 
-                reqwest::blocking::get(&format!("{}/chains/main/blocks/head", tezedge_node_master_rpc_context_root))?;
-        }
-    }
     // if there is no response, the node has not started bootstrapping
     if response.status().is_success() {
         let response_node: serde_json::value::Value =

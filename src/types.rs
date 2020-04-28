@@ -1,12 +1,12 @@
-use serde::Deserialize;
 use std::fmt;
+
 use getset::Getters;
+use serde::Deserialize;
 
 #[derive(Debug, Clone)]
-pub enum NodeType {
-    Tezedge,
-    TezedgeMaster,
-    Ocaml,
+pub struct NodeType {
+    pub name: String,
+    pub url: String,
 }
 
 impl fmt::Display for NodeType {
@@ -15,11 +15,10 @@ impl fmt::Display for NodeType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub enum Branch {
-    Master,
-    Modified,
-    Ocaml,
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct Branch {
+    pub sort_key: usize,
+    pub name: String,
 }
 
 impl fmt::Display for Branch {

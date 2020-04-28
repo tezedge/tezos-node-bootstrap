@@ -1,20 +1,16 @@
-use failure::bail;
+use std::collections::HashMap;
 use std::env;
 use std::process::Command;
-use std::collections::HashMap;
 
-use crate::types::{Branch, WrkResult};
-use crate::environment::{ocaml_node_rpc_context_root, tezedge_node_master_rpc_context_root, tezedge_node_rpc_context_root};
+use failure::bail;
+use itertools::Itertools;
+
+use crate::types::{Branch, NodeType, WrkResult};
 
 type WrkResultMap = HashMap<Branch, WrkResult>;
 
-fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
-    let output;
-
-    let modified_url = format!("{}/{}", tezedge_node_rpc_context_root(), rpc);
-    let master_url = format!("{}/{}", tezedge_node_master_rpc_context_root(), rpc);
-    let ocaml_url = format!("{}/{}", ocaml_node_rpc_context_root(), rpc);
-
+fn run_wrk(branch: Branch, node: &NodeType, rpc: &str) -> Result<WrkResult, failure::Error> {
+    let url = format!("{}/{}", node.url, rpc);
 
     // local testing
     // let master_url = format!("{}/{}", "http://116.202.128.230:28732", rpc);
@@ -22,7 +18,7 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
     // let ocaml_url = format!("{}/{}", "http://116.202.128.230:10000", rpc);
 
     let mut wrk_args = vec![
-        "-t1", 
+        "-t1",
         "-c1",
         "-d30s",
         //"-R1000",
@@ -35,31 +31,12 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
     ];
     println!("Running wrk for {:?} with arguments: {:?}", branch, &wrk_args);
 
-    match branch {
-        Branch::Master => {
-            wrk_args.insert(5, &master_url);
+    wrk_args.insert(5, &url);
 
-            output = Command::new("wrk").args(&wrk_args)
-            .current_dir("/")
-            .output()?;
-        }
-        Branch::Modified => {
-            wrk_args.insert(5, &modified_url);
+    let output = Command::new("wrk").args(&wrk_args)
+        .current_dir("/")
+        .output()?;
 
-            output = Command::new("wrk").args(&wrk_args)
-            .current_dir("/")
-            .output()?;
-        }
-        Branch::Ocaml => {
-            wrk_args.insert(5, &ocaml_url);
-
-            output = Command::new("wrk").args(&wrk_args)
-            .current_dir("/")
-            .output()?;
-        }
-    }
-
-    
     if !output.status.success() {
         println!("{:?}", output);
         bail!("Command executed with failing error code");
@@ -75,16 +52,16 @@ fn run_wrk(branch: Branch, rpc: &str) -> Result<WrkResult, failure::Error> {
     Ok(ret)
 }
 
-pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
+pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>) -> Result<(), failure::Error> {
     let rpcs = vec![
-        "chains/main/blocks/100/helpers/baking_rights?all&cycle=1",
-        "chains/main/blocks/100/helpers/endorsing_rights?all&cycle=1",
-        "chains/main/blocks/100/context/constants",
-        "chains/main/blocks/100/votes/listings",
-        "chains/main/blocks/100",
-        "chains/main/blocks/100/header",
-        "chains/main/blocks/100/context/raw/bytes/cycle",
-        "/chains/main/blocks/100/context/raw/json/cycle/0"
+        format!("chains/main/blocks/{}/helpers/baking_rights?all&cycle=1", block_header),
+        format!("chains/main/blocks/{}/helpers/endorsing_rights?all&cycle=1", block_header),
+        format!("chains/main/blocks/{}/context/constants", block_header),
+        format!("chains/main/blocks/{}/votes/listings", block_header),
+        format!("chains/main/blocks/{}", block_header),
+        format!("chains/main/blocks/{}/header", block_header),
+        format!("chains/main/blocks/{}/context/raw/bytes/cycle", block_header),
+        format!("/chains/main/blocks/{}/context/raw/json/cycle/0", block_header)
         //"chains/main/blocks/100/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17",
     ];
 
@@ -95,9 +72,13 @@ pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
         println!("Running wrk for rpc: {}", rpc);
         let mut outputs: WrkResultMap = HashMap::new();
 
-        outputs.insert(Branch::Master, run_wrk(Branch::Master, &rpc)?);
-        outputs.insert(Branch::Modified, run_wrk(Branch::Modified, &rpc)?);
-        outputs.insert(Branch::Ocaml, run_wrk(Branch::Ocaml, &rpc)?);
+        for (idx, node) in nodes.iter().enumerate() {
+            let branch = Branch {
+                name: node.name.clone(),
+                sort_key: idx,
+            };
+            outputs.insert(branch.clone(), run_wrk(branch.clone(), &node, &rpc)?);
+        }
 
         calculate_and_display_statistics(&outputs)?;
     }
@@ -105,16 +86,15 @@ pub(crate) fn test_rpc_performance() -> Result<(), failure::Error> {
     Ok(())
 }
 
-fn calculate_and_display_statistics(wrk_results: &WrkResultMap) -> Result<(), failure::Error>{
-
+fn calculate_and_display_statistics(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
     for (res_key, res_val) in wrk_results {
-         println!("{:?} thoughtput: {}req/s", res_key, calc_throughput(res_val.requests(), res_val.duration())?);
-         println!("{:?} max latency: {}ms", res_key, calc_max_latency(res_val.latency_max())?);
-         println!("");
+        println!("{:?} thoughtput: {}req/s", res_key, calc_throughput(res_val.requests(), res_val.duration())?);
+        println!("{:?} max latency: {}ms", res_key, calc_max_latency(res_val.latency_max())?);
+        println!();
     }
     calc_deltas(wrk_results)?;
     println!("------------------------------------------------------");
-    println!("");
+    println!();
     Ok(())
 }
 
@@ -127,16 +107,23 @@ fn calc_max_latency(lat: &f32) -> Result<f32, failure::Error> {
 }
 
 fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
-    let ocaml_max_latency = wrk_results.get(&Branch::Ocaml).unwrap().latency_max();
-    let master_max_latency = wrk_results.get(&Branch::Master).unwrap().latency_max();
-    let modified_max_latency = wrk_results.get(&Branch::Modified).unwrap().latency_max();
-
-    let delta_master = (master_max_latency - ocaml_max_latency) * 0.001;
-    let delta_modified = (modified_max_latency - ocaml_max_latency) * 0.001;
+    let keys = wrk_results.keys()
+        .into_iter()
+        .sorted_by_key(|k| k.sort_key)
+        .collect_vec();
 
     println!("Deltas compared to ocaml node: ");
-    println!("\t Master: {}ms", delta_master);
-    println!("\t Modified: {}ms", delta_modified);
+    for combo in keys.into_iter().combinations(2) {
+        let left = combo[0];
+        let right = combo[1];
+
+        let left_max_latency = wrk_results.get(left).unwrap().latency_max();
+        let right_max_latency = wrk_results.get(right).unwrap().latency_max();
+
+        let delta = (left_max_latency - right_max_latency) * 0.001;
+
+        println!("\t {} - {}: {}ms", left.name, right.name, delta);
+    }
 
     Ok(())
 }

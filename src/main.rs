@@ -1,33 +1,64 @@
 // PoC, needs refactoring
 use std::env;
+use std::str::FromStr;
+
+use crate::types::NodeType;
 
 mod types;
 mod wrk_test;
 mod bootstrap;
 mod indexer_test;
-mod environment;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    match args.len() {
-        1 => {
-            println!("No argument passed! Exiting");
-        },
-        2 => {
-            match &args[1][..] {
-                "-p" | "--performance-test"=> wrk_test::test_rpc_performance().unwrap(),
-                "-i" | "--indexer-test" => indexer_test::test_indexer().unwrap(),
-                "-b" | "--bootstrap" => bootstrap::start_bootstrap(),
-                _ => println!("Argument not recognized"),
-            }
-        },
-        3 => {
-            match &args[1][..] {
-                
-                _ => println!("Argument not recognized"),
-            }
-        }
-        _ => println!("Invalid argument"),
+    if args.len() < 2 {
+        panic!("No argument passed! Exiting")
     }
+
+    match &args[1][..] {
+        "-p" | "--performance-test" => {
+            let nodes = nodes(&args);
+            if nodes.len() < 2 {
+                panic!("Expecting <2, 3> nodes!");
+            }
+            wrk_test::test_rpc_performance(level(&args), nodes).unwrap()
+        },
+        "-i" | "--indexer-test" => {
+            let nodes = nodes(&args);
+            if nodes.len() != 2 {
+                panic!("Expecting exact two nodes!");
+            }
+            indexer_test::test_indexer(level(&args), &nodes[0], &nodes[1]).unwrap()
+        },
+        "-b" | "--bootstrap" => bootstrap::start_bootstrap(level(&args), nodes(&args)),
+        _ => panic!("Argument not recognized"),
+    }
+}
+
+fn level(args: &Vec<String>) -> i32 {
+    let level = args
+        .iter()
+        .filter(|a| a.starts_with("--level="))
+        .map(|a| a.replace("--level=", ""))
+        .max().expect("No level arg: --level=");
+    i32::from_str(&level).expect("Invalid level arg")
+}
+
+fn nodes(args: &Vec<String>) -> Vec<NodeType> {
+    let mut nodes = Vec::new();
+    for a in args {
+        if a.starts_with("--node_") {
+            let tmp = a.replace("--node_", "");
+            let tmp: Vec<&str> = tmp.split("=").collect();
+            nodes.push(NodeType {
+                name: tmp[0].to_string(),
+                url: tmp[1].to_string(),
+            })
+        }
+    }
+    if nodes.is_empty() {
+        panic!("no nodes '--node_<name>=<url>' in args");
+    }
+    nodes
 }
