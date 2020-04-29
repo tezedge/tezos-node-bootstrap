@@ -39,8 +39,8 @@ pub(crate) fn test_indexer(
 
     for n in 0..to_block_header {
         println!("Checking and comparing indexed block {}", n);
-        let response_node1 = reqwest::blocking::get(&format!("{}/explorer/block/{}", node1.url, n))?;
-        let response_node2 = reqwest::blocking::get(&format!("{}/explorer/block/{}", node2.url, n))?;
+        let response_node1 = reqwest::blocking::get(&format!("{}/explorer/block/{}", node1_indexer_url, n))?;
+        let response_node2 = reqwest::blocking::get(&format!("{}/explorer/block/{}", node2_indexer_url, n))?;
 
         let tezedge_json: serde_json::value::Value =
             serde_json::from_str(&response_node1.text()?).expect("JSON was not well-formatted");
