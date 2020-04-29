@@ -34,8 +34,8 @@ pub(crate) fn test_indexer(
     node2: &NodeType, node2_indexer_url: String) -> Result<(), failure::Error> {
 
     // wait for the indexer to be fully indexed to the chosen point
-    get_indexer_data(to_block_header, node1, node1_indexer_url)?;
-    get_indexer_data(to_block_header, node2, node2_indexer_url)?;
+    get_indexer_data(to_block_header, node1, node1_indexer_url.clone())?;
+    get_indexer_data(to_block_header, node2, node2_indexer_url.clone())?;
 
     for n in 0..to_block_header {
         println!("Checking and comparing indexed block {}", n);
