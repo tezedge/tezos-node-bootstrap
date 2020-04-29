@@ -29,7 +29,11 @@ fn main() {
             if nodes.len() != 2 {
                 panic!("Expecting exact two nodes!");
             }
-            indexer_test::test_indexer(level(&args), &nodes[0], &nodes[1]).unwrap()
+            indexer_test::test_indexer(
+                level(&args),
+                &nodes[0], indexer_url(&args, &nodes[0]),
+                &nodes[1], indexer_url(&args, &nodes[1]),
+            ).unwrap()
         },
         "-b" | "--bootstrap" => bootstrap::start_bootstrap(level(&args), nodes(&args)),
         _ => panic!("Argument not recognized"),
@@ -61,4 +65,14 @@ fn nodes(args: &Vec<String>) -> Vec<NodeType> {
         panic!("no nodes '--node_<name>=<url>' in args");
     }
     nodes
+}
+
+fn indexer_url(args: &Vec<String>, node: &NodeType) -> String {
+    let indexer_param = &format!("--indexer_{}=", node.name);
+    let url = args
+        .iter()
+        .filter(|a| a.starts_with(indexer_param))
+        .map(|a| a.replace(indexer_param, ""))
+        .max().expect(&format!("No indexer arg: {}", indexer_param));
+    url
 }

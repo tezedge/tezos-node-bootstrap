@@ -5,9 +5,9 @@ use assert_json_diff::assert_json_eq;
 
 use crate::types::NodeType;
 
-fn get_indexer_data(to_block_header: i32, node_type: &NodeType) -> Result<reqwest::blocking::Response, failure::Error> {
+fn get_indexer_data(to_block_header: i32, node_type: &NodeType, indexer_url: String) -> Result<reqwest::blocking::Response, failure::Error> {
     loop {
-        let response = reqwest::blocking::get(&format!("{}/explorer/block/{}", node_type.url, to_block_header));
+        let response = reqwest::blocking::get(&format!("{}/explorer/block/{}", indexer_url, to_block_header));
 
         match response {
             Ok(res) => {
@@ -20,7 +20,7 @@ fn get_indexer_data(to_block_header: i32, node_type: &NodeType) -> Result<reqwes
                 }
             },
             Err(_e) => {
-                println!("[{:?}] Service not started yet", node_type.to_string());
+                println!("[{:?} or {}] Service not started yet", node_type.to_string(), indexer_url);
                 thread::sleep(Duration::from_secs(10));
                 continue;
             }
@@ -28,11 +28,14 @@ fn get_indexer_data(to_block_header: i32, node_type: &NodeType) -> Result<reqwes
     }
 }
 
-pub(crate) fn test_indexer(to_block_header: i32, node1: &NodeType, node2: &NodeType) -> Result<(), failure::Error> {
+pub(crate) fn test_indexer(
+    to_block_header: i32,
+    node1: &NodeType, node1_indexer_url: String,
+    node2: &NodeType, node2_indexer_url: String) -> Result<(), failure::Error> {
 
     // wait for the indexer to be fully indexed to the chosen point
-    get_indexer_data(to_block_header, node1)?;
-    get_indexer_data(to_block_header, node2)?;
+    get_indexer_data(to_block_header, node1, node1_indexer_url)?;
+    get_indexer_data(to_block_header, node2, node2_indexer_url)?;
 
     for n in 0..to_block_header {
         println!("Checking and comparing indexed block {}", n);
