@@ -61,7 +61,15 @@ pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>) -> R
         format!("chains/main/blocks/{}", block_header),
         format!("chains/main/blocks/{}/header", block_header),
         format!("chains/main/blocks/{}/context/raw/bytes/cycle", block_header),
-        format!("/chains/main/blocks/{}/context/raw/json/cycle/0", block_header)
+        format!("/chains/main/blocks/{}/context/raw/json/cycle/0", block_header),
+        format!("/chains/main/blocks/{}/operations", block_header),
+        format!("/chains/main/blocks/{}/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
+
+        // first smart contract on the carthagenet (level 734)
+        format!("/chains/main/blocks/{}/context/contracts/KT1T2V8prXxe2uwanMim7TYHsXMmsrygGbxG", block_header),
+
+        format!("/chains/main/blocks/{}/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
+
         //"chains/main/blocks/100/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17",
     ];
 
