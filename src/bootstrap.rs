@@ -33,9 +33,11 @@ fn spawn_monitor_thread(node_type: NodeType, bootstrap_level: i32) -> Result<Joi
 }
 
 fn create_monitor_node_thread(node: NodeType, bootstrap_level: i32) -> JoinHandle<()> {
+    let mut active = false;
     let bootstrap_monitoring_thread = thread::spawn(move || loop {
         match is_bootstrapped(&node) {
             Ok(s) => {
+                active = true;
                 // empty string means, the rpc server is running, but the bootstraping has not started yet
                 if s != "" {
                     // let block_timestamp = DateTime::parse_from_rfc3339(&s).unwrap();
@@ -60,11 +62,17 @@ fn create_monitor_node_thread(node: NodeType, bootstrap_level: i32) -> JoinHandl
                     thread::sleep(Duration::from_secs(10));
                 }
             }
-            Err(_e) => {
+            Err(e) => {
                 // panic!("Error in bootstrap check: {}", e);
                 // NOTE: This should be handled more carefully
-                println!("[{}] Waiting for node to run", node.name);
-                println!("[{}] Error: {}", node.name, _e);
+                if !active {
+                    println!("[{}] Waiting for node to run", node.name);
+                    println!("[{}] Error: {}", node.name, e);
+                } else {
+                    // when the node was 'active, i.e. was responding to the head reqeusts, and suddenly there is an error in the request
+                    // it means the node encounterred some error and exited
+                    panic!("[{}] The watched node has exited: {}", node.name, e)
+                }
 
                 thread::sleep(Duration::from_secs(10));
             }
