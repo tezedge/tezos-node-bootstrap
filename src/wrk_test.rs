@@ -9,18 +9,19 @@ use crate::types::{Branch, NodeType, WrkResult};
 
 type WrkResultMap = HashMap<Branch, WrkResult>;
 
-fn run_wrk(branch: Branch, node: &NodeType, rpc: &str) -> Result<WrkResult, failure::Error> {
+fn run_wrk(branch: Branch, node: &NodeType, rpc: &str, duration: i32) -> Result<WrkResult, failure::Error> {
     let url = format!("{}/{}", node.url, rpc);
 
     // local testing
     // let master_url = format!("{}/{}", "http://116.202.128.230:28732", rpc);
     // let modified_url = format!("{}/{}", "http://116.202.128.230:18732", rpc);
     // let ocaml_url = format!("{}/{}", "http://116.202.128.230:10000", rpc);
+    let duration_string = &format!("-d{}s", duration.clone());
 
     let mut wrk_args = vec![
         "-t1",
         "-c1",
-        "-d30s",
+        duration_string,
         //"-R1000",
         "--timeout",
         "30s",
@@ -52,27 +53,27 @@ fn run_wrk(branch: Branch, node: &NodeType, rpc: &str) -> Result<WrkResult, fail
     Ok(ret)
 }
 
-pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>) -> Result<(), failure::Error> {
+pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>, duration: i32) -> Result<(), failure::Error> {
     let rpcs = vec![
         format!("chains/main/blocks/{}/helpers/baking_rights?all&cycle=1", block_header),
         format!("chains/main/blocks/{}/helpers/endorsing_rights?all&cycle=1", block_header),
         format!("chains/main/blocks/{}/context/constants", block_header),
         format!("chains/main/blocks/{}/votes/listings", block_header),
-        format!("chains/main/blocks/{}/votes/proposals", block_header),
-        format!("chains/main/blocks/{}/votes/current_proposal", block_header),
-        format!("chains/main/blocks/{}/votes/ballot_list", block_header),
-        format!("chains/main/blocks/{}/votes/current_quorum", block_header),
+        // format!("chains/main/blocks/{}/votes/proposals", block_header),
+        // format!("chains/main/blocks/{}/votes/current_proposal", block_header),
+        // format!("chains/main/blocks/{}/votes/ballot_list", block_header),
+        // format!("chains/main/blocks/{}/votes/current_quorum", block_header),
         format!("chains/main/blocks/{}", block_header),
         format!("chains/main/blocks/{}/header", block_header),
         format!("chains/main/blocks/{}/context/raw/bytes/cycle", block_header),
         format!("/chains/main/blocks/{}/context/raw/json/cycle/0", block_header),
-        format!("/chains/main/blocks/{}/operations", block_header),
-        format!("/chains/main/blocks/{}/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
+        // format!("/chains/main/blocks/{}/operations", block_header),
+        // format!("/chains/main/blocks/{}/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
 
-        // first smart contract on the carthagenet (level 734)
-        format!("/chains/main/blocks/{}/context/contracts/KT1T2V8prXxe2uwanMim7TYHsXMmsrygGbxG", block_header),
+        // // first smart contract on the carthagenet (level 734)
+        // format!("/chains/main/blocks/{}/context/contracts/KT1T2V8prXxe2uwanMim7TYHsXMmsrygGbxG", block_header),
 
-        format!("/chains/main/blocks/{}/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
+        // format!("/chains/main/blocks/{}/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
 
         //"chains/main/blocks/100/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17",
     ];
@@ -89,7 +90,7 @@ pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>) -> R
                 name: node.name.clone(),
                 sort_key: idx,
             };
-            outputs.insert(branch.clone(), run_wrk(branch.clone(), &node, &rpc)?);
+            outputs.insert(branch.clone(), run_wrk(branch.clone(), &node, &rpc, duration.clone())?);
         }
 
         calculate_and_display_statistics(&outputs)?;

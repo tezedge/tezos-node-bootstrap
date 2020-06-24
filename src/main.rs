@@ -22,7 +22,7 @@ fn main() {
             if nodes.len() < 2 {
                 panic!("Expecting <2, 3> nodes!");
             }
-            wrk_test::test_rpc_performance(level(&args), nodes).unwrap()
+            wrk_test::test_rpc_performance(level(&args), nodes, wrk_duration(&args)).unwrap()
         },
         "-i" | "--indexer-test" => {
             let nodes = nodes(&args);
@@ -75,4 +75,13 @@ fn indexer_url(args: &Vec<String>, node: &NodeType) -> String {
         .map(|a| a.replace(indexer_param, ""))
         .max().expect(&format!("No indexer arg: {}", indexer_param));
     url
+}
+
+fn wrk_duration(args: &Vec<String>) -> i32 {
+    let duration = args
+        .iter()
+        .filter(|a| a.starts_with("--wrk-duration="))
+        .map(|a| a.replace("--wrk-duration=", ""))
+        .max().expect("No wrk-duration arg: --wrk-duration=");
+    i32::from_str(&duration).expect("Invalid level arg")
 }
