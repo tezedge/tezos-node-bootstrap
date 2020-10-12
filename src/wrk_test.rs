@@ -55,7 +55,7 @@ fn run_wrk(branch: Branch, node: &NodeType, rpc: &str, duration: i32) -> Result<
 
 pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>, duration: i32) -> Result<(), failure::Error> {
     let rpcs = vec![
-        format!("chains/main/blocks/{}/helpers/baking_rights?all&cycle=1", block_header),
+        format!("chains/main/blocks/{}/helpers/baking_rights?all=true&cycle=1", block_header),
         format!("chains/main/blocks/{}/helpers/endorsing_rights?all&cycle=1", block_header),
         format!("chains/main/blocks/{}/context/constants", block_header),
         format!("chains/main/blocks/{}/votes/listings", block_header),
