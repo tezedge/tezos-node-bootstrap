@@ -8,6 +8,7 @@ mod types;
 mod wrk_test;
 mod bootstrap;
 mod indexer_test;
+mod sequential_request_test;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -36,6 +37,7 @@ fn main() {
             ).unwrap()
         },
         "-b" | "--bootstrap" => bootstrap::start_bootstrap(level(&args), nodes(&args)),
+        "-s" | "--sequence" => sequential_request_test::test_sequential_requests(10, &nodes(&args)),
         _ => panic!("Argument not recognized"),
     }
 }
