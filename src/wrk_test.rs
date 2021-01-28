@@ -58,6 +58,8 @@ pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>, dura
     let rpcs = vec![
         format!("chains/main/blocks/{}/helpers/baking_rights?all=true&cycle={}", block_header, current_cycle + 1),
         format!("chains/main/blocks/{}/helpers/endorsing_rights?all&cycle={}", block_header, current_cycle + 1),
+        format!("chains/main/blocks/{}/helpers/baking_rights", block_header),
+        format!("chains/main/blocks/{}/helpers/endorsing_rights", block_header),
         format!("chains/main/blocks/{}/context/constants", block_header),
         format!("chains/main/blocks/{}/votes/listings", block_header),
         // format!("chains/main/blocks/{}/votes/proposals", block_header),
