@@ -2,7 +2,7 @@
 use std::env;
 use std::str::FromStr;
 
-use crate::types::NodeType;
+use crate::types::{NodeType, BranchType};
 
 mod types;
 mod wrk_test;
@@ -54,12 +54,32 @@ fn level(args: &Vec<String>) -> i32 {
 fn nodes(args: &Vec<String>) -> Vec<NodeType> {
     let mut nodes = Vec::new();
     for a in args {
-        if a.starts_with("--node_") {
+        if a.starts_with("--node_stable_") {
+            let tmp = a.replace("--node_stable_", "");
+            let tmp: Vec<&str> = tmp.split("=").collect();
+            nodes.push(NodeType {
+                name: tmp[0].to_string(),
+                url: tmp[1].to_string(),
+                branch_type: BranchType::Stable
+            })
+        }
+        if a.starts_with("--node_ocaml") {
             let tmp = a.replace("--node_", "");
             let tmp: Vec<&str> = tmp.split("=").collect();
             nodes.push(NodeType {
                 name: tmp[0].to_string(),
                 url: tmp[1].to_string(),
+                branch_type: BranchType::Ocaml
+            })
+        }
+
+        if a.starts_with("--node_feature_") {
+            let tmp = a.replace("--node_feature_", "");
+            let tmp: Vec<&str> = tmp.split("=").collect();
+            nodes.push(NodeType {
+                name: tmp[0].to_string(),
+                url: tmp[1].to_string(),
+                branch_type: BranchType::Feature
             })
         }
     }

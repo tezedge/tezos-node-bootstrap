@@ -7,6 +7,7 @@ use serde::Deserialize;
 pub struct NodeType {
     pub name: String,
     pub url: String,
+    pub branch_type: BranchType,
 }
 
 impl fmt::Display for NodeType {
@@ -16,9 +17,24 @@ impl fmt::Display for NodeType {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum BranchType {
+    Stable,
+    Feature,
+    Ocaml,
+}
+
+impl fmt::Display for BranchType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Branch {
     pub sort_key: usize,
     pub name: String,
+    pub branch_type: BranchType,
 }
 
 impl fmt::Display for Branch {

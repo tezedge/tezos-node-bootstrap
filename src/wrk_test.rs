@@ -5,7 +5,7 @@ use std::process::Command;
 use failure::bail;
 use itertools::Itertools;
 
-use crate::types::{Branch, NodeType, WrkResult};
+use crate::types::{Branch, NodeType, WrkResult, BranchType};
 
 type WrkResultMap = HashMap<Branch, WrkResult>;
 
@@ -91,6 +91,7 @@ pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>, dura
         for (idx, node) in nodes.iter().enumerate() {
             let branch = Branch {
                 name: node.name.clone(),
+                branch_type: node.branch_type.clone(),
                 sort_key: idx,
             };
             outputs.insert(branch.clone(), run_wrk(branch.clone(), &node, &rpc, duration.clone())?);
@@ -129,7 +130,7 @@ fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
         .collect_vec();
 
     println!("Deltas compared to ocaml node: ");
-    for combo in keys.into_iter().combinations(2) {
+    for combo in keys.clone().into_iter().combinations(2) {
         let left = combo[0];
         let right = combo[1];
 
@@ -139,6 +140,28 @@ fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
         let delta = (left_max_latency - right_max_latency) * 0.001;
 
         println!("\t {} - {}: {}ms", left.name, right.name, delta);
+    }
+
+    // only compare, when stable is present
+    if let Some(stable_key) = keys.clone().into_iter().filter(|key| key.branch_type == BranchType::Stable).last() {
+        let new_key = keys.into_iter().filter(|key| key.branch_type == BranchType::Feature).last().unwrap();
+
+        let stable = wrk_results.get(&stable_key).unwrap();
+        let new = wrk_results.get(&new_key).unwrap();
+
+        if new.latency_max() > stable.latency_max() {
+            // fail the test if the 10% performance happened
+            if stable.latency_max() * 0.1 < new.latency_max() - stable.latency_max() {
+                panic!("[Max Latency] Perforamnce regression greater than 10%!")
+            }
+        }
+    
+        if new.requests() < stable.requests() {
+            // fail the test if the 10% performance happened
+            if stable.requests() * 0.1 < stable.requests() - new.requests() {
+                panic!("[Troughput] Perforamnce regression greater than 10%!")
+            }
+        }
     }
 
     Ok(())
