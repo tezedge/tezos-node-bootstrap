@@ -1,16 +1,16 @@
 use std::collections::HashMap;
-use std::env;
 use std::process::Command;
 
 use failure::bail;
 use itertools::Itertools;
 
-use crate::types::{Branch, NodeType, WrkResult, BranchType};
+use crate::configuration::PerformanceTestEnv;
+use crate::types::{Branch, BranchType, WrkResult};
 
 type WrkResultMap = HashMap<Branch, WrkResult>;
 
-fn run_wrk(branch: Branch, node: &NodeType, rpc: &str, duration: i32) -> Result<WrkResult, failure::Error> {
-    let url = format!("{}/{}", node.url, rpc);
+fn run_wrk(branch: &Branch, rpc: &str, duration: &u64) -> Result<WrkResult, failure::Error> {
+    let url = format!("{}/{}", branch.url, rpc);
 
     // local testing
     // let master_url = format!("{}/{}", "http://116.202.128.230:28732", rpc);
@@ -28,13 +28,18 @@ fn run_wrk(branch: Branch, node: &NodeType, rpc: &str, duration: i32) -> Result<
         "-s",
         "/scripts/as_json.lua",
         "--",
-        "out.json"
+        "out.json",
     ];
-    println!("Running wrk for {:?} with arguments: {:?}", branch, &wrk_args);
+    println!(
+        "Running wrk for {:?} with arguments: {:?}",
+        branch, &wrk_args
+    );
+    println!();
 
     wrk_args.insert(5, &url);
 
-    let output = Command::new("wrk").args(&wrk_args)
+    let output = Command::new("wrk")
+        .args(&wrk_args)
         .current_dir("/")
         .output()?;
 
@@ -47,55 +52,75 @@ fn run_wrk(branch: Branch, node: &NodeType, rpc: &str, duration: i32) -> Result<
     let json_out = String::from_utf8(output.stdout)?
         .lines()
         .last()
-        .unwrap().to_string();
+        .unwrap()
+        .to_string();
 
     let ret: WrkResult = serde_json::from_str(&json_out).expect("JSON was not well-formated");
     Ok(ret)
 }
 
-pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>, duration: i32) -> Result<(), failure::Error> {
-    let current_cycle = block_header / 2048;
+pub(crate) fn test_rpc_performance(env: PerformanceTestEnv) -> Result<(), failure::Error> {
+    let PerformanceTestEnv {
+        tezedge_new_node,
+        tezedge_old_node,
+        ocaml_node,
+        wrk_test_duration,
+        level,
+    } = env;
+
+    let current_cycle = level / 2048;
     let rpcs = vec![
-        format!("chains/main/blocks/{}/helpers/baking_rights?all=true&cycle={}", block_header, current_cycle + 1),
-        format!("chains/main/blocks/{}/helpers/endorsing_rights?all&cycle={}", block_header, current_cycle + 1),
-        format!("chains/main/blocks/{}/helpers/baking_rights", block_header),
-        format!("chains/main/blocks/{}/helpers/endorsing_rights", block_header),
-        format!("chains/main/blocks/{}/context/constants", block_header),
-        format!("chains/main/blocks/{}/votes/listings", block_header),
-        // format!("chains/main/blocks/{}/votes/proposals", block_header),
-        // format!("chains/main/blocks/{}/votes/current_proposal", block_header),
-        // format!("chains/main/blocks/{}/votes/ballot_list", block_header),
-        // format!("chains/main/blocks/{}/votes/current_quorum", block_header),
-        format!("chains/main/blocks/{}", block_header),
-        format!("chains/main/blocks/{}/header", block_header),
-        format!("chains/main/blocks/{}/context/raw/bytes/cycle", block_header),
-        format!("/chains/main/blocks/{}/context/raw/json/cycle/0", block_header),
-        // format!("/chains/main/blocks/{}/operations", block_header),
-        // format!("/chains/main/blocks/{}/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
+        format!(
+            "chains/main/blocks/{}/helpers/baking_rights?all=true&cycle={}",
+            level,
+            current_cycle + 1
+        ),
+        format!(
+            "chains/main/blocks/{}/helpers/endorsing_rights?all&cycle={}",
+            level,
+            current_cycle + 1
+        ),
+        format!("chains/main/blocks/{}/helpers/baking_rights", level),
+        format!("chains/main/blocks/{}/helpers/endorsing_rights", level),
+        format!("chains/main/blocks/{}/context/constants", level),
+        format!("chains/main/blocks/{}/votes/listings", level),
+        // format!("chains/main/blocks/{}/votes/proposals", level),
+        // format!("chains/main/blocks/{}/votes/current_proposal", level),
+        // format!("chains/main/blocks/{}/votes/ballot_list", level),
+        // format!("chains/main/blocks/{}/votes/current_quorum", level),
+        format!("chains/main/blocks/{}", level),
+        format!("chains/main/blocks/{}/header", level),
+        format!("chains/main/blocks/{}/context/raw/bytes/cycle", level),
+        format!("/chains/main/blocks/{}/context/raw/json/cycle/0", level),
+        // format!("/chains/main/blocks/{}/operations", level),
+        // format!("/chains/main/blocks/{}/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", level),
 
         // // first smart contract on the carthagenet (level 734)
-        // format!("/chains/main/blocks/{}/context/contracts/KT1T2V8prXxe2uwanMim7TYHsXMmsrygGbxG", block_header),
+        // format!("/chains/main/blocks/{}/context/contracts/KT1T2V8prXxe2uwanMim7TYHsXMmsrygGbxG", level),
 
-        // format!("/chains/main/blocks/{}/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", block_header),
+        // format!("/chains/main/blocks/{}/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", level),
 
         //"chains/main/blocks/100/context/delegates/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17",
     ];
 
-    let path = env::current_dir()?;
-    println!("The current directory is {}", path.display());
-
     for rpc in rpcs.into_iter() {
         println!("Running wrk for rpc: {}", rpc);
+        println!();
         let mut outputs: WrkResultMap = HashMap::new();
 
-        for (idx, node) in nodes.iter().enumerate() {
-            let branch = Branch {
-                name: node.name.clone(),
-                branch_type: node.branch_type.clone(),
-                sort_key: idx,
-            };
-            outputs.insert(branch.clone(), run_wrk(branch.clone(), &node, &rpc, duration.clone())?);
-        }
+        let ocaml = Branch::new(0, ocaml_node, BranchType::Ocaml);
+        let tezedge_new = Branch::new(1, tezedge_new_node, BranchType::Feature);
+        let tezedge_old = Branch::new(2, tezedge_old_node, BranchType::Stable);
+
+        outputs.insert(ocaml.clone(), run_wrk(&ocaml, &rpc, &wrk_test_duration)?);
+        outputs.insert(
+            tezedge_new.clone(),
+            run_wrk(&tezedge_new, &rpc, &wrk_test_duration)?,
+        );
+        outputs.insert(
+            tezedge_old.clone(),
+            run_wrk(&tezedge_old, &rpc, &wrk_test_duration)?,
+        );
 
         calculate_and_display_statistics(&outputs)?;
     }
@@ -105,8 +130,16 @@ pub(crate) fn test_rpc_performance(block_header: i32, nodes: Vec<NodeType>, dura
 
 fn calculate_and_display_statistics(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
     for (res_key, res_val) in wrk_results {
-        println!("{:?} thoughtput: {}req/s", res_key, calc_throughput(res_val.requests(), res_val.duration())?);
-        println!("{:?} max latency: {}ms", res_key, calc_max_latency(res_val.latency_max())?);
+        println!(
+            "{:?} thoughtput: {}req/s",
+            res_key,
+            calc_throughput(res_val.requests(), res_val.duration())?
+        );
+        println!(
+            "{:?} max latency: {}ms",
+            res_key,
+            calc_max_latency(res_val.latency_max())?
+        );
         println!();
     }
     calc_deltas(wrk_results)?;
@@ -124,7 +157,8 @@ fn calc_max_latency(lat: &f32) -> Result<f32, failure::Error> {
 }
 
 fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
-    let keys = wrk_results.keys()
+    let keys = wrk_results
+        .keys()
         .into_iter()
         .sorted_by_key(|k| k.sort_key)
         .collect_vec();
@@ -139,12 +173,21 @@ fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
 
         let delta = (left_max_latency - right_max_latency) * 0.001;
 
-        println!("\t {} - {}: {}ms", left.name, right.name, delta);
+        println!("\t {} - {}: {}ms", left, right, delta);
     }
 
     // only compare, when stable is present
-    if let Some(stable_key) = keys.clone().into_iter().filter(|key| key.branch_type == BranchType::Stable).last() {
-        let new_key = keys.into_iter().filter(|key| key.branch_type == BranchType::Feature).last().unwrap();
+    if let Some(stable_key) = keys
+        .clone()
+        .into_iter()
+        .filter(|key| key.branch_type == BranchType::Stable)
+        .last()
+    {
+        let new_key = keys
+            .into_iter()
+            .filter(|key| key.branch_type == BranchType::Feature)
+            .last()
+            .unwrap();
 
         let stable = wrk_results.get(&stable_key).unwrap();
         let new = wrk_results.get(&new_key).unwrap();
@@ -155,7 +198,7 @@ fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
                 panic!("[Max Latency] Perforamnce regression greater than 10%!")
             }
         }
-    
+
         if new.requests() < stable.requests() {
             // fail the test if the 10% performance happened
             if stable.requests() * 0.1 < stable.requests() - new.requests() {

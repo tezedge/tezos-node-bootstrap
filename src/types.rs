@@ -1,20 +1,8 @@
 use std::fmt;
+use std::net::SocketAddr;
 
 use getset::Getters;
 use serde::Deserialize;
-
-#[derive(Debug, Clone)]
-pub struct NodeType {
-    pub name: String,
-    pub url: String,
-    pub branch_type: BranchType,
-}
-
-impl fmt::Display for NodeType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum BranchType {
@@ -29,12 +17,21 @@ impl fmt::Display for BranchType {
     }
 }
 
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Branch {
     pub sort_key: usize,
-    pub name: String,
+    pub url: SocketAddr,
     pub branch_type: BranchType,
+}
+
+impl Branch {
+    pub fn new(sort_key: usize, url: SocketAddr, branch_type: BranchType) -> Self {
+        Self {
+            sort_key,
+            url,
+            branch_type,
+        }
+    }
 }
 
 impl fmt::Display for Branch {
