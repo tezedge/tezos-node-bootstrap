@@ -214,19 +214,21 @@ fn calc_deltas(wrk_results: &WrkResultMap, max_latency_threshold: f32, throughpu
         let stable = wrk_results.get(&stable_key).unwrap();
         let new = wrk_results.get(&new_key).unwrap();
 
-        if new.latency_max() > stable.latency_max() {
+        // TODO: remove this after the high variance of the max_latency has been reduced
+        const MINIMAL_STABLE_LATENCY_TO_CHECK: f32 = 50.0;
+        if new.latency_max() > stable.latency_max() && stable.latency_max() > &MINIMAL_STABLE_LATENCY_TO_CHECK {
             // fail the test if the 10% performance happened
             if stable.latency_max() * max_latency_threshold
                 < new.latency_max() - stable.latency_max()
             {
-                panic!("[Max Latency] Perforamnce regression greater than {}%!", max_latency_threshold)
+                panic!("[Max Latency] Perforamnce regression greater than {}%!", max_latency_threshold * 100.0)
             }
         }
 
         if new.requests() < stable.requests() {
             // fail the test if the 10% performance happened
             if stable.requests() * throughput_threshold < stable.requests() - new.requests() {
-                panic!("[Troughput] Perforamnce regression greater than {}%!", throughput_threshold)
+                panic!("[Troughput] Perforamnce regression greater than {}%!", throughput_threshold * 100.0)
             }
         }
     }
