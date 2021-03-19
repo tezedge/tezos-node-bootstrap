@@ -10,7 +10,8 @@ use crate::types::{Branch, BranchType, WrkResult};
 type WrkResultMap = HashMap<Branch, WrkResult>;
 
 fn run_wrk(branch: &Branch, rpc: &str, duration: &u64) -> Result<WrkResult, failure::Error> {
-    let url = format!("{}/{}", branch.url, rpc);
+    let url = format!("{}{}", branch.url, rpc);
+    println!("URL: {}", url);
 
     // local testing
     // let master_url = format!("{}/{}", "http://116.202.128.230:28732", rpc);
@@ -113,7 +114,7 @@ pub(crate) fn test_rpc_performance(env: PerformanceTestEnv) -> Result<(), failur
 
         let ocaml = Branch::new(0, ocaml_node.clone(), BranchType::Ocaml);
         let tezedge_new = Branch::new(1, tezedge_new_node.clone(), BranchType::Feature);
-        
+
         if let Some(tezedge_old) = &tezedge_old_node {
             let tezedge_old = Branch::new(2, tezedge_old.clone(), BranchType::Stable);
             outputs.insert(
