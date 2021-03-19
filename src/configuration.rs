@@ -63,7 +63,7 @@ pub struct PerformanceTestEnv {
     pub level: i32,
     pub ocaml_node: Url,
     pub tezedge_new_node: Url,
-    pub tezedge_old_node: Url,
+    pub tezedge_old_node: Option<Url>,
     pub wrk_test_duration: u64,
     pub max_latency_threshold: f32,
     pub throughput_threshold: f32,
@@ -87,11 +87,18 @@ impl PerformanceTestEnv {
                 .unwrap_or("")
                 .parse()
                 .expect("Provided value cannot be converted into valid url"),
-            tezedge_old_node: args
-                .value_of("tezedge-old-node")
-                .unwrap_or("")
-                .parse()
-                .expect("Provided value cannot be converted into valid url"),
+            tezedge_old_node: {
+                if args.is_present("tezedge-old-node") {
+                    Some(
+                        args.value_of("tezedge-old-node")
+                            .unwrap_or("")
+                            .parse::<Url>()
+                            .expect("Provided value cannot be converted into valid url"),
+                    )
+                } else {
+                    None
+                }
+            },
             wrk_test_duration: args
                 .value_of("wrk-test-duration")
                 .unwrap_or("")

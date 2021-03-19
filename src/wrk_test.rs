@@ -113,16 +113,19 @@ pub(crate) fn test_rpc_performance(env: PerformanceTestEnv) -> Result<(), failur
 
         let ocaml = Branch::new(0, ocaml_node.clone(), BranchType::Ocaml);
         let tezedge_new = Branch::new(1, tezedge_new_node.clone(), BranchType::Feature);
-        let tezedge_old = Branch::new(2, tezedge_old_node.clone(), BranchType::Stable);
+        
+        if let Some(tezedge_old) = &tezedge_old_node {
+            let tezedge_old = Branch::new(2, tezedge_old.clone(), BranchType::Stable);
+            outputs.insert(
+                tezedge_old.clone(),
+                run_wrk(&tezedge_old, &rpc, &wrk_test_duration)?,
+            );
+        }
 
         outputs.insert(ocaml.clone(), run_wrk(&ocaml, &rpc, &wrk_test_duration)?);
         outputs.insert(
             tezedge_new.clone(),
             run_wrk(&tezedge_new, &rpc, &wrk_test_duration)?,
-        );
-        outputs.insert(
-            tezedge_old.clone(),
-            run_wrk(&tezedge_old, &rpc, &wrk_test_duration)?,
         );
 
         calculate_and_display_statistics(&outputs, max_latency_threshold, throughput_threshold);
@@ -216,19 +219,27 @@ fn calc_deltas(wrk_results: &WrkResultMap, max_latency_threshold: f32, throughpu
 
         // TODO: remove this after the high variance of the max_latency has been reduced
         const MINIMAL_STABLE_LATENCY_TO_CHECK: f32 = 50.0;
-        if new.latency_max() > stable.latency_max() && stable.latency_max() > &MINIMAL_STABLE_LATENCY_TO_CHECK {
+        if new.latency_max() > stable.latency_max()
+            && stable.latency_max() > &MINIMAL_STABLE_LATENCY_TO_CHECK
+        {
             // fail the test if the 10% performance happened
             if stable.latency_max() * max_latency_threshold
                 < new.latency_max() - stable.latency_max()
             {
-                panic!("[Max Latency] Perforamnce regression greater than {}%!", max_latency_threshold * 100.0)
+                panic!(
+                    "[Max Latency] Perforamnce regression greater than {}%!",
+                    max_latency_threshold * 100.0
+                )
             }
         }
 
         if new.requests() < stable.requests() {
             // fail the test if the 10% performance happened
             if stable.requests() * throughput_threshold < stable.requests() - new.requests() {
-                panic!("[Troughput] Perforamnce regression greater than {}%!", throughput_threshold * 100.0)
+                panic!(
+                    "[Troughput] Perforamnce regression greater than {}%!",
+                    throughput_threshold * 100.0
+                )
             }
         }
     }
