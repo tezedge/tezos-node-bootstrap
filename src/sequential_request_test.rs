@@ -43,5 +43,5 @@ pub(crate) fn test_sequential_requests(env: SequentialTestEnv) {
 }
 
 fn extract_secs(dur: Duration) -> f64 {
-    (dur.as_secs() as f64) + (dur.subsec_nanos() as f64 / 1000_000_000.0)
+    (dur.as_secs() as f64) + (dur.subsec_nanos() as f64 / 1_000_000_000.0)
 }

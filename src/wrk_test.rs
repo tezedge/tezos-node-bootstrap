@@ -32,7 +32,8 @@ fn run_wrk(branch: &Branch, rpc: &str, duration: &u64) -> Result<WrkResult, fail
     ];
     println!(
         "Running wrk for {:?} with arguments: {:?}",
-        branch, &wrk_args
+        branch.url.domain().unwrap_or(""),
+        &wrk_args
     );
     println!();
 
@@ -66,6 +67,8 @@ pub(crate) fn test_rpc_performance(env: PerformanceTestEnv) -> Result<(), failur
         ocaml_node,
         wrk_test_duration,
         level,
+        max_latency_threshold,
+        throughput_threshold,
     } = env;
 
     let current_cycle = level / 2048;
@@ -108,9 +111,9 @@ pub(crate) fn test_rpc_performance(env: PerformanceTestEnv) -> Result<(), failur
         println!();
         let mut outputs: WrkResultMap = HashMap::new();
 
-        let ocaml = Branch::new(0, ocaml_node, BranchType::Ocaml);
-        let tezedge_new = Branch::new(1, tezedge_new_node, BranchType::Feature);
-        let tezedge_old = Branch::new(2, tezedge_old_node, BranchType::Stable);
+        let ocaml = Branch::new(0, ocaml_node.clone(), BranchType::Ocaml);
+        let tezedge_new = Branch::new(1, tezedge_new_node.clone(), BranchType::Feature);
+        let tezedge_old = Branch::new(2, tezedge_old_node.clone(), BranchType::Stable);
 
         outputs.insert(ocaml.clone(), run_wrk(&ocaml, &rpc, &wrk_test_duration)?);
         outputs.insert(
@@ -122,41 +125,44 @@ pub(crate) fn test_rpc_performance(env: PerformanceTestEnv) -> Result<(), failur
             run_wrk(&tezedge_old, &rpc, &wrk_test_duration)?,
         );
 
-        calculate_and_display_statistics(&outputs)?;
+        calculate_and_display_statistics(&outputs, max_latency_threshold, throughput_threshold);
     }
 
     Ok(())
 }
 
-fn calculate_and_display_statistics(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
+fn calculate_and_display_statistics(
+    wrk_results: &WrkResultMap,
+    max_latency_threshold: f32,
+    throughput_threshold: f32,
+) {
     for (res_key, res_val) in wrk_results {
         println!(
             "{:?} thoughtput: {}req/s",
-            res_key,
-            calc_throughput(res_val.requests(), res_val.duration())?
+            res_key.url.domain().unwrap_or(""),
+            calc_throughput(res_val.requests(), res_val.duration())
         );
         println!(
             "{:?} max latency: {}ms",
-            res_key,
-            calc_max_latency(res_val.latency_max())?
+            res_key.url.domain().unwrap_or(""),
+            calc_max_latency(res_val.latency_max())
         );
         println!();
     }
-    calc_deltas(wrk_results)?;
+    calc_deltas(wrk_results, max_latency_threshold, throughput_threshold);
     println!("------------------------------------------------------");
     println!();
-    Ok(())
 }
 
-fn calc_throughput(req: &f32, dur: &f32) -> Result<f32, failure::Error> {
-    Ok(req / (dur * 0.000001))
+fn calc_throughput(req: &f32, dur: &f32) -> f32 {
+    req / (dur * 0.000001)
 }
 
-fn calc_max_latency(lat: &f32) -> Result<f32, failure::Error> {
-    Ok(lat * 0.001)
+fn calc_max_latency(lat: &f32) -> f32 {
+    lat * 0.001
 }
 
-fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
+fn calc_deltas(wrk_results: &WrkResultMap, max_latency_threshold: f32, throughput_threshold: f32) {
     let keys = wrk_results
         .keys()
         .into_iter()
@@ -168,12 +174,28 @@ fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
         let left = combo[0];
         let right = combo[1];
 
-        let left_max_latency = wrk_results.get(left).unwrap().latency_max();
-        let right_max_latency = wrk_results.get(right).unwrap().latency_max();
+        let left_result = wrk_results.get(left).unwrap();
+        let right_result = wrk_results.get(right).unwrap();
 
-        let delta = (left_max_latency - right_max_latency) * 0.001;
+        let left_node = left.url.domain().unwrap_or("");
+        let right_node = right.url.domain().unwrap_or("");
 
-        println!("\t {} - {}: {}ms", left, right, delta);
+        let left_max_latency = left_result.latency_max();
+        let right_max_latency = right_result.latency_max();
+
+        let left_max_throughput = calc_throughput(left_result.requests(), left_result.duration());
+        let right_max_throughput =
+            calc_throughput(right_result.requests(), right_result.duration());
+
+        let delta_latency = (left_max_latency - right_max_latency) * 0.001;
+        let delta_throughput = left_max_throughput - right_max_throughput;
+
+        println!("\t {} - {}: {}ms", left_node, right_node, delta_latency);
+        println!(
+            "\t {} - {}: {}req/s",
+            left_node, right_node, delta_throughput
+        );
+        println!();
     }
 
     // only compare, when stable is present
@@ -194,18 +216,18 @@ fn calc_deltas(wrk_results: &WrkResultMap) -> Result<(), failure::Error> {
 
         if new.latency_max() > stable.latency_max() {
             // fail the test if the 10% performance happened
-            if stable.latency_max() * 0.1 < new.latency_max() - stable.latency_max() {
-                panic!("[Max Latency] Perforamnce regression greater than 10%!")
+            if stable.latency_max() * max_latency_threshold
+                < new.latency_max() - stable.latency_max()
+            {
+                panic!("[Max Latency] Perforamnce regression greater than {}%!", max_latency_threshold)
             }
         }
 
         if new.requests() < stable.requests() {
             // fail the test if the 10% performance happened
-            if stable.requests() * 0.1 < stable.requests() - new.requests() {
-                panic!("[Troughput] Perforamnce regression greater than 10%!")
+            if stable.requests() * throughput_threshold < stable.requests() - new.requests() {
+                panic!("[Troughput] Perforamnce regression greater than {}%!", throughput_threshold)
             }
         }
     }
-
-    Ok(())
 }

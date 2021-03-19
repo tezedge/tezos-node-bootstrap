@@ -21,7 +21,7 @@ fn main() {
         if let Err(e) = wrk_test::test_rpc_performance(env) {
             panic!("Error in wrk tests: {}", e)
         }
-    } else if let Some(ref subcommand) = matches.subcommand_matches("performance-test") {
+    } else if let Some(ref subcommand) = matches.subcommand_matches("indexer-test") {
         let env = IndexerTestEnv::from_args(subcommand);
         if let Err(e) = indexer_test::test_indexer(env) {
             panic!("Error in indexer tests: {}", e)

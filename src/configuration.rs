@@ -1,19 +1,18 @@
-use std::net::SocketAddr;
-
 use clap::{App, Arg, SubCommand};
+use url::Url;
 
 pub struct SequentialTestEnv {
     pub cycles: i32,
-    pub nodes: Vec<SocketAddr>,
+    pub nodes: Vec<Url>,
 }
 
 impl SequentialTestEnv {
     pub fn from_args(args: &clap::ArgMatches) -> Self {
-        let nodes: Vec<SocketAddr> = if let Some(nodes) = args.values_of("nodes") {
+        let nodes: Vec<Url> = if let Some(nodes) = args.values_of("nodes") {
             nodes
                 .map(|v| {
                     v.parse()
-                        .expect("Provided value cannot be converted into valid uri")
+                        .expect("Provided value cannot be converted into valid url")
                 })
                 .collect()
         } else {
@@ -33,16 +32,16 @@ impl SequentialTestEnv {
 
 pub struct BootstrapEnv {
     pub level: i32,
-    pub nodes: Vec<SocketAddr>,
+    pub nodes: Vec<Url>,
 }
 
 impl BootstrapEnv {
     pub fn from_args(args: &clap::ArgMatches) -> Self {
-        let nodes: Vec<SocketAddr> = if let Some(nodes) = args.values_of("nodes") {
+        let nodes: Vec<Url> = if let Some(nodes) = args.values_of("nodes") {
             nodes
                 .map(|v| {
                     v.parse()
-                        .expect("Provided value cannot be converted into valid uri")
+                        .expect("Provided value cannot be converted into valid url")
                 })
                 .collect()
         } else {
@@ -62,10 +61,12 @@ impl BootstrapEnv {
 
 pub struct PerformanceTestEnv {
     pub level: i32,
-    pub ocaml_node: SocketAddr,
-    pub tezedge_new_node: SocketAddr,
-    pub tezedge_old_node: SocketAddr,
+    pub ocaml_node: Url,
+    pub tezedge_new_node: Url,
+    pub tezedge_old_node: Url,
     pub wrk_test_duration: u64,
+    pub max_latency_threshold: f32,
+    pub throughput_threshold: f32,
 }
 
 impl PerformanceTestEnv {
@@ -80,32 +81,44 @@ impl PerformanceTestEnv {
                 .value_of("ocaml-node")
                 .unwrap_or("")
                 .parse()
-                .expect("Provided value cannot be converted into valid uri"),
+                .expect("Provided value cannot be converted into valid url"),
             tezedge_new_node: args
                 .value_of("tezedge-new-node")
                 .unwrap_or("")
                 .parse()
-                .expect("Provided value cannot be converted into valid uri"),
+                .expect("Provided value cannot be converted into valid url"),
             tezedge_old_node: args
                 .value_of("tezedge-old-node")
                 .unwrap_or("")
                 .parse()
-                .expect("Provided value cannot be converted into valid uri"),
+                .expect("Provided value cannot be converted into valid url"),
             wrk_test_duration: args
                 .value_of("wrk-test-duration")
                 .unwrap_or("")
                 .parse::<u64>()
                 .expect("Provided value cannot be converted into valid u64"),
+            throughput_threshold: args
+                .value_of("throughput-threshold")
+                .unwrap_or("")
+                .parse::<f32>()
+                .expect("Provided value cannot be converted into valid u64")
+                * 0.01,
+            max_latency_threshold: args
+                .value_of("max-latency-threshold")
+                .unwrap_or("")
+                .parse::<f32>()
+                .expect("Provided value cannot be converted into valid u64")
+                * 0.01,
         }
     }
 }
 
 pub struct IndexerTestEnv {
     pub level: i32,
-    pub ocaml_node: SocketAddr,
-    pub tezedge_node: SocketAddr,
-    pub tezedge_indexer: SocketAddr,
-    pub ocaml_indexer: SocketAddr,
+    pub ocaml_node: Url,
+    pub tezedge_node: Url,
+    pub tezedge_indexer: Url,
+    pub ocaml_indexer: Url,
 }
 
 impl IndexerTestEnv {
@@ -120,22 +133,22 @@ impl IndexerTestEnv {
                 .value_of("ocaml-node")
                 .unwrap_or("")
                 .parse()
-                .expect("Provided value cannot be converted into valid uri"),
+                .expect("Provided value cannot be converted into valid url"),
             tezedge_node: args
                 .value_of("tezedge-node")
                 .unwrap_or("")
                 .parse()
-                .expect("Provided value cannot be converted into valid uri"),
+                .expect("Provided value cannot be converted into valid url"),
             tezedge_indexer: args
                 .value_of("tezedge-indexer")
                 .unwrap_or("")
                 .parse()
-                .expect("Provided value cannot be converted into valid uri"),
+                .expect("Provided value cannot be converted into valid url"),
             ocaml_indexer: args
                 .value_of("ocaml-indexer")
                 .unwrap_or("")
                 .parse()
-                .expect("Provided value cannot be converted into valid uri"),
+                .expect("Provided value cannot be converted into valid url"),
         }
     }
 }
@@ -179,11 +192,25 @@ pub fn bootstrap_app() -> App<'static, 'static> {
                     .help("Tezedge node url - with old code from the target branch of the pull request")
                 )
                 .arg(
-                    Arg::with_name("wrk-duration")
-                    .long("wrk-duration")
+                    Arg::with_name("wrk-test-duration")
+                    .long("wrk-test-duration")
                     .takes_value(true)
-                    .value_name("STRING")
+                    .value_name("NUM")
                     .help("Duration of the individual tests")
+                )
+                .arg(
+                    Arg::with_name("max-latency-threshold")
+                    .long("max-latency-threshold")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Maximum latency delta between two node versions allowed in percentages")
+                )
+                .arg(
+                    Arg::with_name("throughput-threshold")
+                    .long("throughput-threshold")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Maximum throughput delta between two node versions allowed in percentages")
                 )
             )
         .subcommand(
@@ -206,21 +233,21 @@ pub fn bootstrap_app() -> App<'static, 'static> {
             )
             .arg(
                 Arg::with_name("tezedge-node")
-                .long("tezedge-new-node")
+                .long("tezedge-node")
                 .takes_value(true)
                 .value_name("STRING")
                 .help("Tezedge node url - with updated code from the pull request")
             )
             .arg(
                 Arg::with_name("tezedge-indexer")
-                .long("tezedge-old-node")
+                .long("tezedge-indexer")
                 .takes_value(true)
                 .value_name("STRING")
                 .help("Indexer url connected to the tezedge node")
             )
             .arg(
                 Arg::with_name("ocaml-indexer")
-                .long("wrk-duration")
+                .long("ocaml-indexer")
                 .takes_value(true)
                 .value_name("STRING")
                 .help("Indexer url connected to the ocaml node")
@@ -242,7 +269,7 @@ pub fn bootstrap_app() -> App<'static, 'static> {
                 .long("nodes")
                 .takes_value(true)
                 .multiple(true)
-                .min_values(2)
+                .min_values(1)
                 .value_name("STRING")
                 .help("Node urls to be bootstrapped")
             )

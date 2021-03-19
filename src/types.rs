@@ -1,8 +1,8 @@
 use std::fmt;
-use std::net::SocketAddr;
 
 use getset::Getters;
 use serde::Deserialize;
+use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum BranchType {
@@ -20,12 +20,12 @@ impl fmt::Display for BranchType {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Branch {
     pub sort_key: usize,
-    pub url: SocketAddr,
+    pub url: Url,
     pub branch_type: BranchType,
 }
 
 impl Branch {
-    pub fn new(sort_key: usize, url: SocketAddr, branch_type: BranchType) -> Self {
+    pub fn new(sort_key: usize, url: Url, branch_type: BranchType) -> Self {
         Self {
             sort_key,
             url,

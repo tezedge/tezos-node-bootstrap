@@ -1,15 +1,15 @@
-use std::net::SocketAddr;
 use std::thread;
 use std::time::Duration;
 
 use assert_json_diff::assert_json_eq;
+use url::Url;
 
 use crate::configuration::IndexerTestEnv;
 
 fn get_indexer_data(
     to_block_header: i32,
-    node: SocketAddr,
-    indexer: SocketAddr,
+    node: Url,
+    indexer: Url,
 ) -> Result<reqwest::blocking::Response, failure::Error> {
     loop {
         let response =

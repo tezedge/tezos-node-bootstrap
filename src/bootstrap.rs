@@ -1,9 +1,8 @@
-use std::net::SocketAddr;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use reqwest;
+use url::Url;
 
 // use crate::types::NodeType;
 use crate::configuration::BootstrapEnv;
@@ -13,7 +12,7 @@ pub(crate) fn start_bootstrap(env: BootstrapEnv) {
 
     let mut joins = Vec::new();
     for node in nodes {
-        joins.push(spawn_monitor_thread(node, level).unwrap())
+        joins.push(spawn_monitor_thread(node, level))
     }
 
     for join in joins {
@@ -21,31 +20,27 @@ pub(crate) fn start_bootstrap(env: BootstrapEnv) {
     }
 }
 
-fn spawn_monitor_thread(
-    node: SocketAddr,
-    bootstrap_level: i32,
-) -> Result<JoinHandle<()>, failure::Error> {
-    Ok(thread::spawn(move || {
+fn spawn_monitor_thread(node: Url, bootstrap_level: i32) -> JoinHandle<()> {
+    thread::spawn(move || {
         let now = Instant::now();
 
-        let bootstrapping_tezedge = create_monitor_node_thread(node, bootstrap_level);
+        let bootstrapping_tezedge = create_monitor_node_thread(node.clone(), bootstrap_level);
         bootstrapping_tezedge.join().unwrap();
 
         let elapsed = now.elapsed();
-        let sec = (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1000_000_000.0);
+        let sec = (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1_000_000_000.0);
         println!("[{}] Duration in seconds: {}", node, sec);
-    }))
+    })
 }
 
-fn create_monitor_node_thread(node: SocketAddr, bootstrap_level: i32) -> JoinHandle<()> {
+fn create_monitor_node_thread(node: Url, bootstrap_level: i32) -> JoinHandle<()> {
     let mut active = false;
-    let bootstrap_monitoring_thread = thread::spawn(move || loop {
+    thread::spawn(move || loop {
         match is_bootstrapped(&node) {
             Ok(response_string) => {
                 active = true;
                 // empty string means, the rpc server is running, but the bootstraping has not started yet
-                if response_string != "" {
-                    // let block_timestamp = DateTime::parse_from_rfc3339(&response_string).unwrap();
+                if !response_string.is_empty() {
                     let block_level: i32 = response_string.parse().unwrap();
 
                     if block_level >= bootstrap_level {
@@ -64,8 +59,6 @@ fn create_monitor_node_thread(node: SocketAddr, bootstrap_level: i32) -> JoinHan
                 }
             }
             Err(e) => {
-                // panic!("Error in bootstrap check: {}", e);
-                // NOTE: This should be handled more carefully
                 if !active {
                     println!("[{}] Waiting for node to run", node);
                     println!("[{}] Error: {}", node, e);
@@ -78,13 +71,12 @@ fn create_monitor_node_thread(node: SocketAddr, bootstrap_level: i32) -> JoinHan
                 thread::sleep(Duration::from_secs(10));
             }
         }
-    });
-    bootstrap_monitoring_thread
+    })
 }
 
 #[allow(dead_code)]
-fn is_bootstrapped(node: &SocketAddr) -> Result<String, reqwest::Error> {
-    let response = reqwest::blocking::get(&format!("{}/chains/main/blocks/head", node))?;
+fn is_bootstrapped(node: &Url) -> Result<String, reqwest::Error> {
+    let response = reqwest::blocking::get(&format!("{}chains/main/blocks/head", node))?;
 
     // if there is no response, the node has not started bootstrapping
     if response.status().is_success() {
