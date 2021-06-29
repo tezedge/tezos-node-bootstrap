@@ -59,24 +59,30 @@ impl BootstrapEnv {
     }
 }
 
-pub struct PerformanceTestEnv {
-    pub level: i32,
+pub struct RpcPerformanceTestEnv {
     pub ocaml_node: Url,
     pub tezedge_new_node: Url,
     pub tezedge_old_node: Option<Url>,
+    pub url_file: String,
     pub wrk_test_duration: u64,
     pub max_latency_threshold: f32,
     pub throughput_threshold: f32,
+    pub latency_no_fail: bool,
+    pub throughput_no_fail: bool,
 }
 
-impl PerformanceTestEnv {
+pub struct RpcLatencyTestEnv {
+    pub ocaml_node: Url,
+    pub tezedge_new_node: Url,
+    pub tezedge_old_node: Option<Url>,
+    pub url_file: String,
+    pub wrk_test_duration: u64,
+    pub wrk_request_rate: u64,
+}
+
+impl RpcPerformanceTestEnv {
     pub fn from_args(args: &clap::ArgMatches) -> Self {
-        PerformanceTestEnv {
-            level: args
-                .value_of("level")
-                .unwrap_or("")
-                .parse::<i32>()
-                .expect("Provided value cannot be converted into valid i32"),
+        RpcPerformanceTestEnv {
             ocaml_node: args
                 .value_of("ocaml-node")
                 .unwrap_or("")
@@ -99,23 +105,74 @@ impl PerformanceTestEnv {
                     None
                 }
             },
+            url_file: args
+                .value_of_lossy("url-file")
+                .expect("Missing URL file parameter")
+                .into_owned(),
             wrk_test_duration: args
                 .value_of("wrk-test-duration")
                 .unwrap_or("")
                 .parse::<u64>()
                 .expect("Provided value cannot be converted into valid u64"),
-            throughput_threshold: args
-                .value_of("throughput-threshold")
-                .unwrap_or("")
-                .parse::<f32>()
-                .expect("Provided value cannot be converted into valid u64")
-                * 0.01,
             max_latency_threshold: args
                 .value_of("max-latency-threshold")
                 .unwrap_or("")
                 .parse::<f32>()
                 .expect("Provided value cannot be converted into valid u64")
                 * 0.01,
+            throughput_threshold: args
+                .value_of("throughput-threshold")
+                .unwrap_or("")
+                .parse::<f32>()
+                .expect("Provided value cannot be converted into valid u64")
+                * 0.01,
+            latency_no_fail: args
+                .is_present("latency-no-fail"),
+            throughput_no_fail: args
+                .is_present("throughput-no-fail"),
+        }
+    }
+}
+
+impl RpcLatencyTestEnv {
+    pub fn from_args(args: &clap::ArgMatches) -> Self {
+        RpcLatencyTestEnv {
+            ocaml_node: args
+                .value_of("ocaml-node")
+                .unwrap_or("")
+                .parse()
+                .expect("Provided value cannot be converted into valid url"),
+            tezedge_new_node: args
+                .value_of("tezedge-new-node")
+                .unwrap_or("")
+                .parse()
+                .expect("Provided value cannot be converted into valid url"),
+            tezedge_old_node: {
+                if args.is_present("tezedge-old-node") {
+                    Some(
+                        args.value_of("tezedge-old-node")
+                            .unwrap_or("")
+                            .parse::<Url>()
+                            .expect("Provided value cannot be converted into valid url"),
+                    )
+                } else {
+                    None
+                }
+            },
+            url_file: args
+                .value_of_lossy("url-file")
+                .expect("Missing URL file parameter")
+                .into_owned(),
+            wrk_test_duration: args
+                .value_of("wrk-test-duration")
+                .unwrap_or("")
+                .parse::<u64>()
+                .expect("Provided value cannot be converted into valid u64"),
+            wrk_request_rate: args
+                .value_of("wrk-request-rate")
+                .unwrap_or("")
+                .parse::<u64>()
+                .expect("Provided value cannot be converted into valid u64"),
         }
     }
 }
@@ -171,15 +228,9 @@ pub fn bootstrap_app() -> App<'static, 'static> {
                 .about("Performance test using wrk")
                 .setting(clap::AppSettings::AllArgsOverrideSelf)
                 .arg(
-                    Arg::with_name("level")
-                    .long("level")
-                    .takes_value(true)
-                    .value_name("NUM")
-                    .help("Block level which is used in the test")
-                )
-                .arg(
                     Arg::with_name("ocaml-node")
                     .long("ocaml-node")
+                    .required(true)
                     .takes_value(true)
                     .value_name("STRING")
                     .help("Ocaml node url")
@@ -187,6 +238,7 @@ pub fn bootstrap_app() -> App<'static, 'static> {
                 .arg(
                     Arg::with_name("tezedge-new-node")
                     .long("tezedge-new-node")
+                    .required(true)
                     .takes_value(true)
                     .value_name("STRING")
                     .help("Tezedge node url - with updated code from the pull request")
@@ -197,6 +249,14 @@ pub fn bootstrap_app() -> App<'static, 'static> {
                     .takes_value(true)
                     .value_name("STRING")
                     .help("Tezedge node url - with old code from the target branch of the pull request")
+                )
+                .arg(
+                    Arg::with_name("url-file")
+                    .long("url-file")
+                    .required(true)
+                    .takes_value(true)
+                    .value_name("FILE")
+                    .help("File containing a list of URLs to test")
                 )
                 .arg(
                     Arg::with_name("wrk-test-duration")
@@ -210,7 +270,7 @@ pub fn bootstrap_app() -> App<'static, 'static> {
                     .long("max-latency-threshold")
                     .takes_value(true)
                     .value_name("NUM")
-                    .help("Maximum latency delta between two node versions allowed in percentages")
+                    .help("Maximum tail latency delta between two node versions allowed in percentages")
                 )
                 .arg(
                     Arg::with_name("throughput-threshold")
@@ -218,6 +278,68 @@ pub fn bootstrap_app() -> App<'static, 'static> {
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Maximum throughput delta between two node versions allowed in percentages")
+                )
+                .arg(
+                    Arg::with_name("latency-no-fail")
+                    .long("latency-no-fail")
+                    .takes_value(false)
+                    .help("Do not fail the test if max latency exceeds the threshold")
+                )
+                .arg(
+                    Arg::with_name("throughput-no-fail")
+                    .long("throughput-no-fail")
+                    .takes_value(false)
+                    .help("Do not fail the test if max latency exceeds the threshold")
+                )
+            )
+        .subcommand(
+            SubCommand::with_name("latency-test")
+                .about("Latency test using wrk2")
+                .setting(clap::AppSettings::AllArgsOverrideSelf)
+                .arg(
+                    Arg::with_name("ocaml-node")
+                    .long("ocaml-node")
+                    .required(true)
+                    .takes_value(true)
+                    .value_name("STRING")
+                    .help("Ocaml node url")
+                )
+                .arg(
+                    Arg::with_name("tezedge-new-node")
+                    .long("tezedge-new-node")
+                    .required(true)
+                    .takes_value(true)
+                    .value_name("STRING")
+                    .help("Tezedge node url - with updated code from the pull request")
+                )
+                .arg(
+                    Arg::with_name("tezedge-old-node")
+                    .long("tezedge-old-node")
+                    .takes_value(true)
+                    .value_name("STRING")
+                    .help("Tezedge node url - with old code from the target branch of the pull request")
+                )
+                .arg(
+                    Arg::with_name("url-file")
+                    .long("url-file")
+                    .required(true)
+                    .takes_value(true)
+                    .value_name("FILE")
+                    .help("File containing a list of URLs to test")
+                )
+                .arg(
+                    Arg::with_name("wrk-test-duration")
+                    .long("wrk-test-duration")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Duration of the individual tests")
+                )
+                .arg(
+                    Arg::with_name("wrk-request-rate")
+                    .long("wrk-request-rate")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Request rate for the individual test")
                 )
             )
         .subcommand(
