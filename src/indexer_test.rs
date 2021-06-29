@@ -2,25 +2,31 @@ use std::thread;
 use std::time::Duration;
 
 use assert_json_diff::assert_json_eq;
+use url::Url;
 
-use crate::types::NodeType;
+use crate::configuration::IndexerTestEnv;
 
-fn get_indexer_data(to_block_header: i32, node_type: &NodeType, indexer_url: String) -> Result<reqwest::blocking::Response, failure::Error> {
+fn get_indexer_data(
+    to_block_header: i32,
+    node: Url,
+    indexer: Url,
+) -> Result<reqwest::blocking::Response, failure::Error> {
     loop {
-        let response = reqwest::blocking::get(&format!("{}/explorer/block/{}", indexer_url, to_block_header));
+        let response =
+            reqwest::blocking::get(&format!("{}/explorer/block/{}", indexer, to_block_header));
 
         match response {
             Ok(res) => {
                 if !res.status().is_success() {
-                    println!("[{}] Indexer still indexing. Sleeping for 10s", node_type.to_string());
+                    println!("[{}] Indexer still indexing. Sleeping for 10s", node);
                     thread::sleep(Duration::from_secs(10));
                     continue;
                 } else {
-                    return Ok(res)
+                    return Ok(res);
                 }
-            },
+            }
             Err(_e) => {
-                println!("[{:?} or {}] Service not started yet", node_type.to_string(), indexer_url);
+                println!("[{:?} or {}] Service not started yet", node, indexer);
                 thread::sleep(Duration::from_secs(10));
                 continue;
             }
@@ -28,19 +34,25 @@ fn get_indexer_data(to_block_header: i32, node_type: &NodeType, indexer_url: Str
     }
 }
 
-pub(crate) fn test_indexer(
-    to_block_header: i32,
-    node1: &NodeType, node1_indexer_url: String,
-    node2: &NodeType, node2_indexer_url: String) -> Result<(), failure::Error> {
+pub(crate) fn test_indexer(env: IndexerTestEnv) -> Result<(), failure::Error> {
+    let IndexerTestEnv {
+        tezedge_node,
+        tezedge_indexer,
+        ocaml_node,
+        ocaml_indexer,
+        level,
+    } = env;
 
     // wait for the indexer to be fully indexed to the chosen point
-    get_indexer_data(to_block_header, node1, node1_indexer_url.clone())?;
-    get_indexer_data(to_block_header, node2, node2_indexer_url.clone())?;
+    get_indexer_data(level, tezedge_node, tezedge_indexer.clone())?;
+    get_indexer_data(level, ocaml_node, ocaml_indexer.clone())?;
 
-    for n in 0..to_block_header {
+    for n in 0..level {
         println!("Checking and comparing indexed block {}", n);
-        let response_node1 = reqwest::blocking::get(&format!("{}/explorer/block/{}", node1_indexer_url, n))?;
-        let response_node2 = reqwest::blocking::get(&format!("{}/explorer/block/{}", node2_indexer_url, n))?;
+        let response_node1 =
+            reqwest::blocking::get(&format!("{}/explorer/block/{}", tezedge_indexer, n))?;
+        let response_node2 =
+            reqwest::blocking::get(&format!("{}/explorer/block/{}", ocaml_indexer, n))?;
 
         let tezedge_json: serde_json::value::Value =
             serde_json::from_str(&response_node1.text()?).expect("JSON was not well-formatted");

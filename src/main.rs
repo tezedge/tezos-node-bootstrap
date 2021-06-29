@@ -1,78 +1,33 @@
 // PoC, needs refactoring
-use std::env;
-use std::str::FromStr;
+use crate::configuration::{
+    bootstrap_app, BootstrapEnv, IndexerTestEnv, PerformanceTestEnv, SequentialTestEnv,
+};
 
-use crate::types::NodeType;
-
+mod bootstrap;
+mod configuration;
+mod indexer_test;
+mod sequential_request_test;
 mod types;
 mod wrk_test;
-mod bootstrap;
-mod indexer_test;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let matches = bootstrap_app().get_matches();
 
-    if args.len() < 2 {
-        panic!("No argument passed! Exiting")
-    }
-
-    match &args[1][..] {
-        "-p" | "--performance-test" => {
-            let nodes = nodes(&args);
-            if nodes.len() < 2 {
-                panic!("Expecting <2, 3> nodes!");
-            }
-            wrk_test::test_rpc_performance(level(&args), nodes).unwrap()
-        },
-        "-i" | "--indexer-test" => {
-            let nodes = nodes(&args);
-            if nodes.len() != 2 {
-                panic!("Expecting exact two nodes!");
-            }
-            indexer_test::test_indexer(
-                level(&args),
-                &nodes[0], indexer_url(&args, &nodes[0]),
-                &nodes[1], indexer_url(&args, &nodes[1]),
-            ).unwrap()
-        },
-        "-b" | "--bootstrap" => bootstrap::start_bootstrap(level(&args), nodes(&args)),
-        _ => panic!("Argument not recognized"),
-    }
-}
-
-fn level(args: &Vec<String>) -> i32 {
-    let level = args
-        .iter()
-        .filter(|a| a.starts_with("--level="))
-        .map(|a| a.replace("--level=", ""))
-        .max().expect("No level arg: --level=");
-    i32::from_str(&level).expect("Invalid level arg")
-}
-
-fn nodes(args: &Vec<String>) -> Vec<NodeType> {
-    let mut nodes = Vec::new();
-    for a in args {
-        if a.starts_with("--node_") {
-            let tmp = a.replace("--node_", "");
-            let tmp: Vec<&str> = tmp.split("=").collect();
-            nodes.push(NodeType {
-                name: tmp[0].to_string(),
-                url: tmp[1].to_string(),
-            })
+    if let Some(subcommand) = matches.subcommand_matches("bootstrap") {
+        let env = BootstrapEnv::from_args(subcommand);
+        bootstrap::start_bootstrap(env);
+    } else if let Some(ref subcommand) = matches.subcommand_matches("performance-test") {
+        let env = PerformanceTestEnv::from_args(subcommand);
+        if let Err(e) = wrk_test::test_rpc_performance(env) {
+            panic!("Error in wrk tests: {}", e)
         }
+    } else if let Some(ref subcommand) = matches.subcommand_matches("indexer-test") {
+        let env = IndexerTestEnv::from_args(subcommand);
+        if let Err(e) = indexer_test::test_indexer(env) {
+            panic!("Error in indexer tests: {}", e)
+        }
+    } else if let Some(ref subcommand) = matches.subcommand_matches("sequential-test") {
+        let env = SequentialTestEnv::from_args(subcommand);
+        sequential_request_test::test_sequential_requests(env)
     }
-    if nodes.is_empty() {
-        panic!("no nodes '--node_<name>=<url>' in args");
-    }
-    nodes
-}
-
-fn indexer_url(args: &Vec<String>, node: &NodeType) -> String {
-    let indexer_param = &format!("--indexer_{}=", node.name);
-    let url = args
-        .iter()
-        .filter(|a| a.starts_with(indexer_param))
-        .map(|a| a.replace(indexer_param, ""))
-        .max().expect(&format!("No indexer arg: {}", indexer_param));
-    url
 }

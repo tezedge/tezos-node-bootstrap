@@ -1,4 +1,4 @@
-FROM rust:1.39
+FROM rust:latest
 
 RUN apt-get update && apt-get install -y libssl-dev git zlib1g-dev
 # RUN git clone https://github.com/giltene/wrk2.git && cd wrk2 && make && cp wrk /usr/local/bin

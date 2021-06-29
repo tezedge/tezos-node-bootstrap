@@ -2,14 +2,16 @@ use std::fmt;
 
 use getset::Getters;
 use serde::Deserialize;
+use url::Url;
 
-#[derive(Debug, Clone)]
-pub struct NodeType {
-    pub name: String,
-    pub url: String,
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum BranchType {
+    Stable,
+    Feature,
+    Ocaml,
 }
 
-impl fmt::Display for NodeType {
+impl fmt::Display for BranchType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -18,7 +20,18 @@ impl fmt::Display for NodeType {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Branch {
     pub sort_key: usize,
-    pub name: String,
+    pub url: Url,
+    pub branch_type: BranchType,
+}
+
+impl Branch {
+    pub fn new(sort_key: usize, url: Url, branch_type: BranchType) -> Self {
+        Self {
+            sort_key,
+            url,
+            branch_type,
+        }
+    }
 }
 
 impl fmt::Display for Branch {
