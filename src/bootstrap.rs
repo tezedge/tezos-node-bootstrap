@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};

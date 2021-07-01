@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 // PoC, needs refactoring
 use crate::configuration::{
     bootstrap_app, BootstrapEnv, IndexerTestEnv, RpcPerformanceTestEnv, RpcLatencyTestEnv, SequentialTestEnv,
