@@ -87,14 +87,6 @@ pub(crate) fn test_rpc_performance(env: RpcPerformanceTestEnv) -> Result<(), fai
             .as_ref()
             .map(|b| Branch::new(2, b.clone(), BranchType::Stable));
 
-        println!("Preheating services for rpc: {}", rpc);
-        println!();
-        if let Some(tezedge_old) = &tezedge_old {
-            let _ = run_wrk(&tezedge_old, &rpc, &1)?;
-        }
-        let _ = run_wrk(&ocaml, &rpc, &1)?;
-        let _ = run_wrk(&tezedge_new, &rpc, &1)?;
-
         println!("Running wrk for rpc: {}", rpc);
         println!();
         let mut outputs: WrkResultMap = HashMap::new();
